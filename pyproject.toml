@@ -1,0 +1,25 @@
+[project]
+name = "inference-vitals"
+version = "0.1.0"
+description = "A dashboard for running AI models on an Apple Silicon Mac: speed, memory, heat and power"
+authors = [
+    { name = "Urban Morph" }
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+inference-vitals = "inference_vitals.monitor:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 110
