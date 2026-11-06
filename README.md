@@ -6,10 +6,10 @@ the same timeline.**
 
 ![At a glance, during a run: speed, context, answers, memory, swap, GPU, heat and power](docs/screenshots/at-a-glance-dark.png)
 
-Activity Monitor makes you switch tabs and knows nothing about models. Benchmark apps time the requests
-they send themselves. inference-vitals sits beside whatever you are running and records both sides, the
-model and the Mac, so you can see *why* a run slowed down: the GPU got hot, macOS started swapping, or
-a page was simply longer.
+Activity Monitor (or `nvtop`) makes you switch views and knows nothing about models. Benchmark apps time
+the requests they send themselves. inference-vitals sits beside whatever you are running and records both
+sides, the model and the machine, so you can see *why* a run slowed down: the GPU got hot, the system
+started swapping, or a page was simply longer.
 
 It works with **any model and any local engine**: Ollama, LM Studio, llama.cpp, the MLX servers, Jan,
 LocalAI, or your own Python code. A small proxy in front of the engine measures each request as it
@@ -22,7 +22,9 @@ beyond Python itself. Everything runs on your machine and listens on `127.0.0.1`
 
 ## What it shows
 
-**At a glance**, sixteen numbers, each with a quiet trend line under it, and one chart:
+**At a glance**: a **Running** band naming each model that is reporting and what it is doing (Idle,
+Reading (prefill) or Writing (decode)), then sixteen numbers, each with a quiet trend line under it, and
+one chart:
 
 | The run | The machine (Mac; differences on Linux below) |
 | --- | --- |
@@ -30,10 +32,10 @@ beyond Python itself. Everything runs on your machine and listens on `127.0.0.1`
 | **Writing now**: tokens per second, live, while the answer is written | **Memory free**, macOS's own memory-pressure level |
 | **TTFT (median)**: time to first token | **Swap in/out**: bytes moving to and from swap right now |
 | **Reading speed**: prompt tokens per second | **GPU busy** |
-| **Context used** against the limit you set | **GPU temp** (amber at 85 °C, red at 95 °C) |
+| **Context used** against the limit, live while the answer is written (prompt plus tokens so far) | **GPU temp** (amber at 85 °C, red at 95 °C) |
 | **Answers cut off** at the token limit | **Thermal**: macOS's thermal state, live: Nominal, Fair (warm), Serious (slowing down), Critical |
 | **Invalid answers** (not the format you asked for) | **Mac power**, the whole machine, in watts |
-| **Cold start TTFT**: the first answer after loading | **Energy/token**: joules per answer token |
+| **Cold start TTFT**: the first answer after loading | **Energy/token**: joules per answer token, live |
 
 On Linux with NVIDIA, the machine column changes where the hardware differs: **GPU mem left** is free
 VRAM (summed over GPUs), **GPU slowdown** replaces Thermal (the GPU's own reasons for running below full
@@ -88,8 +90,9 @@ Nothing starts by itself at login; run `start` when you want to watch something.
 
 ### Linux with NVIDIA GPUs (experimental)
 
-Written and tested against recorded `nvidia-smi` and `/proc` output, not yet on real NVIDIA hardware: if
-you run it, please open an issue with what you see. You need the NVIDIA driver (which brings
+Tested against recorded `nvidia-smi` and `/proc` output, and started end to end in a Debian container
+with a stand-in `nvidia-smi` (every service answers and every dashboard query runs), but not yet on real
+NVIDIA hardware: if you run it, please open an issue with what you see. You need the NVIDIA driver (which brings
 `nvidia-smi`), [uv](https://docs.astral.sh/uv/), Prometheus and Grafana:
 
 ```sh
@@ -111,7 +114,7 @@ never cared which machine it runs on. Windows is not supported (under WSL2, the 
 
 ## Getting the model's numbers on it
 
-The Mac half of the dashboard works on its own, whatever is running. The model half fills in when
+The machine half of the dashboard works on its own, whatever is running. The model half fills in when
 something reports to `127.0.0.1:8400/metrics`, the address Prometheus reads. There are two ways.
 
 ### Any engine with an HTTP API: the proxy
@@ -134,8 +137,9 @@ and timings (OpenAI `usage`, llama.cpp `timings`, Ollama's counts and durations)
 otherwise tokens are counted as they stream in, which is close but not exact.
 
 What a proxy cannot see is the engine's own GPU memory, so "GPU mem left" and the model memory chart
-stay empty; the Mac's memory, pressure and swap panels still show everything. "Progress" also stays
-empty, since a proxy does not know how many requests are coming.
+stay empty; the machine's memory, pressure and swap panels still show everything. "Progress" and
+"Context used" also stay empty, since a proxy knows neither how many requests are coming nor the
+engine's context limit.
 
 ### Your own Python code: the library
 
@@ -144,13 +148,15 @@ Any engine (MLX, llama-cpp-python, PyTorch, a loop over an API), no extra packag
 ```python
 from inference_vitals.metrics import Metrics, serve
 
-live = Metrics(total=len(pages), kv_per_token=0, labels={"model_name": "qwen3-8b-4bit"})
+live = Metrics(
+    total=len(pages), kv_per_token=0, labels={"model_name": "qwen3-8b-4bit"}, context_limit=32768
+)
 serve(live, 8400)
 
 for page in pages:
     live.started(page)
     # ... while the answer streams in:
-    live.progress(tokens=n_tokens_so_far, writing_seconds=seconds_since_first_token)
+    live.progress(tokens=n_tokens_so_far, writing_seconds=seconds_since_first_token, prompt_tokens=2900)
     live.finished(
         {
             "ttft_s": 1.8,
@@ -162,7 +168,6 @@ for page in pages:
             "peak_memory_gb": 19.1,
             "gpu_memory_limit_gb": 40.2,
             "context_used_tokens": 3210,
-            "context_limit_tokens": 32768,
             "finish_reason": "stop",
             "parse_error": None,
             "warm": True,
@@ -170,17 +175,19 @@ for page in pages:
     )
 ```
 
-Every field is optional; panels for fields you do not send stay empty. The `model_name` label puts each
+Every field is optional; panels for fields you do not send stay empty. Tokens count as `progress`
+reports them, so speeds, energy per token and (given `prompt_tokens`) context used stay live through a
+long answer, such as a model that reasons before it answers. The `model_name` label puts each
 model on its own line, so two runs can be compared on the same chart. `kv_bytes_per_token(config)` works
 out the KV cache estimate from a model's `config.json`, including models that mix full and linear
 attention layers.
 
 This route can report everything, including the model's GPU memory and the context limit, so every
-panel fills in. The proxy and the library both publish on port 8400, so run one at a time. The metric names follow vLLM's where one exists, so dashboards built for vLLM can read
-them too.
+panel fills in. The proxy and the library both publish on port 8400, so run one at a time. The metric
+names follow vLLM's where one exists, so dashboards built for vLLM can read them too.
 
 Both routes carry numbers only. Prompts, answers and item ids never reach the numbers page, because any
-program on the Mac can read `127.0.0.1`; the proxy does not store or log what passes through it.
+program on the machine can read `127.0.0.1`; the proxy does not store or log what passes through it.
 
 ## Run conditions
 
@@ -223,7 +230,7 @@ per second.
 ```sh
 uv run inference-vitals stop
 rm -rf ~/.local/state/inference-vitals
-brew uninstall prometheus grafana macmon   # on a Mac, if nothing else uses them
+brew uninstall prometheus grafana macmon   # on a Mac, if nothing else uses them (on Linux, your package manager)
 ```
 
 ## Development

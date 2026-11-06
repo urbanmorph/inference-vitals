@@ -10,6 +10,9 @@
         ...                                   # call live.progress(tokens, seconds) as tokens arrive
         live.finished({"ttft_s": ..., "generation_tps": ..., "prompt_tokens": ..., ...})
 
+Tokens count as they are written, as in vLLM, so speeds and energy per token stay live during a long
+answer; the context in use grows with them when `progress` is given the prompt's size.
+
 Only numbers are kept. A record's text, answer and id never reach the page: they can hold private
 content, and the page is readable by any program on this Mac.
 
@@ -70,15 +73,23 @@ def kv_bytes_per_token(config: dict) -> int:
 
 
 class Metrics:
-    def __init__(self, total: int | None, kv_per_token: int, labels: dict | None = None):
+    def __init__(
+        self,
+        total: int | None,
+        kv_per_token: int,
+        labels: dict | None = None,
+        context_limit: int | None = None,
+    ):
         self.total, self.kv_per_token = total, kv_per_token
         self.labels = labels or {}
         self.lock = threading.Lock()
         self.done = self.already = self.running = self.prompt_tokens = self.generation_tokens = 0
         self.cut_off = self.invalid = self.over_context = self.failed = 0
-        self.phase, self.now_tokens, self.now_tps = IDLE, 0, 0.0
+        self.phase, self.now_tokens, self.now_tps, self.now_prompt = IDLE, 0, 0.0, None
         self.last: dict = {}
         self.sticky: dict = {}  # values that hold for the whole run: limits, load time, cold TTFT
+        if context_limit:
+            self.sticky["context_limit_tokens"] = context_limit
         self.hist = {name: {"counts": [0] * len(b), "sum": 0.0, "n": 0} for name, b in BUCKETS.items()}
 
     def cached(self, _item):
@@ -88,12 +99,13 @@ class Metrics:
     def started(self, _item):
         with self.lock:
             self.running += 1
-            self.phase, self.now_tokens, self.now_tps = READING, 0, 0.0
+            self.phase, self.now_tokens, self.now_tps, self.now_prompt = READING, 0, 0.0, None
 
-    def progress(self, tokens: int, writing_seconds: float):
-        """Called as tokens arrive: `tokens` written so far, `writing_seconds` since the first one."""
+    def progress(self, tokens: int, writing_seconds: float, prompt_tokens: int | None = None):
+        """Called as tokens arrive: `tokens` written so far, `writing_seconds` since the first one, and the
+        prompt's size if known."""
         with self.lock:
-            self.phase, self.now_tokens = WRITING, tokens
+            self.phase, self.now_tokens, self.now_prompt = WRITING, tokens, prompt_tokens
             self.now_tps = round(tokens / writing_seconds, 1) if writing_seconds > 0 else 0.0
 
     def _observe(self, name, value):
@@ -107,10 +119,11 @@ class Metrics:
         nums = {k: record[k] for k in NUMBERS if isinstance(record.get(k), (int, float))}
         with self.lock:
             self.running = max(0, self.running - 1)
-            self.phase = IDLE
             self.done += 1
             self.prompt_tokens += nums.get("prompt_tokens", 0)
-            self.generation_tokens += nums.get("generation_tokens", 0)
+            # the final count replaces the live one, but a counter never goes down
+            self.generation_tokens += max(nums.get("generation_tokens", 0), self._writing())
+            self.phase, self.now_tokens = IDLE, 0
             self.cut_off += record.get("finish_reason") == "length"
             self.invalid += bool(record.get("parse_error"))
             self.failed += bool(record.get("failed"))
@@ -130,6 +143,9 @@ class Metrics:
             if nums.get("generation_tps"):
                 self._observe("vllm:time_per_output_token_seconds", 1 / nums["generation_tps"])
 
+    def _writing(self) -> int:
+        return self.now_tokens if self.phase == WRITING else 0
+
     def _kv_estimate(self):
         return (self.last.get("prompt_tokens", 0) + self.last.get("generation_tokens", 0)) * self.kv_per_token
 
@@ -142,7 +158,7 @@ class Metrics:
         with self.lock:
             out = [
                 ("vllm:prompt_tokens_total", self.prompt_tokens),
-                ("vllm:generation_tokens_total", self.generation_tokens),
+                ("vllm:generation_tokens_total", self.generation_tokens + self._writing()),
                 ("vllm:num_requests_running", self.running),
                 ("vitals_answers_cut_off_total", self.cut_off),
                 ("vitals_answers_invalid_total", self.invalid),
@@ -166,6 +182,8 @@ class Metrics:
                 ("vitals_current_generation_tokens", self.now_tokens),
                 ("vitals_current_generation_tps", self.now_tps),
             ]
+            if self.phase == WRITING and self.now_prompt is not None:
+                gauges.append(("vitals_current_context_tokens", self.now_prompt + self.now_tokens))
             if self.total is not None:  # unknown when a proxy just watches whatever comes through
                 gauges.append(("vitals_pages_total", self.total))
             s = self.sticky
@@ -196,7 +214,7 @@ class Metrics:
                     "current_generation_tokens": self.now_tokens,
                     "current_generation_tps": self.now_tps,
                     "prompt_tokens_total": self.prompt_tokens,
-                    "generation_tokens_total": self.generation_tokens,
+                    "generation_tokens_total": self.generation_tokens + self._writing(),
                     "answers_cut_off": self.cut_off,
                     "answers_invalid": self.invalid,
                     "over_context": self.over_context,

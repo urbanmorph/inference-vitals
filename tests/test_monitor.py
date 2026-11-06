@@ -9,7 +9,8 @@ from inference_vitals import gpustat, metrics, monitor, sysstat
 def _known_metric_names():
     m = metrics.Metrics(total=1, kv_per_token=1, labels={"model_name": "x"})
     m.started({})
-    m.progress(tokens=1, writing_seconds=1.0)
+    m.progress(tokens=1, writing_seconds=1.0, prompt_tokens=1)
+    writing = m.render()  # some numbers exist only while a page is being written
     m.finished(
         {
             "ttft_s": 1.0,
@@ -34,7 +35,7 @@ def _known_metric_names():
             "load_s": 1.0,
         }
     )
-    ours = {line.split("{")[0].split(" ")[0] for line in m.render().splitlines()}
+    ours = {line.split("{")[0].split(" ")[0] for line in (writing + m.render()).splitlines()}
     return {
         monitor.MAC: ours | set(monitor.MACMON_METRICS) | set(sysstat.METRICS) | set(sysstat.MAC_ONLY),
         monitor.LINUX: ours | set(gpustat.METRICS) | set(sysstat.METRICS) | set(sysstat.LINUX_ONLY),
@@ -212,7 +213,7 @@ def test_the_thermal_tile_is_live_and_named():
 
 
 def test_tiles_show_plain_numbers_with_no_graph_behind_them_and_name_each_model():
-    tiles = [p for p in monitor.dashboard()["panels"] if p.get("type") == "stat"]
+    tiles = [p for p in monitor.dashboard()["panels"] if p.get("type") == "stat" and p["title"] != "Running"]
     assert len(tiles) == 16
     for t in tiles:
         assert t["options"]["graphMode"] == "none", t["title"]
@@ -221,7 +222,7 @@ def test_tiles_show_plain_numbers_with_no_graph_behind_them_and_name_each_model(
 
 def test_every_tile_has_a_small_trend_strip_right_under_it():
     panels = monitor.dashboard()["panels"]
-    tiles = [p for p in panels if p["type"] == "stat"]
+    tiles = [p for p in panels if p["type"] == "stat" and p["title"] != "Running"]
     strips = {(p["gridPos"]["x"], p["gridPos"]["y"]): p for p in panels if p.get("title") == ""}
     assert len(strips) == len(tiles) == 16
     for t in tiles:
@@ -319,3 +320,25 @@ def test_machine_tiles_always_show_one_number(platform):
     for p in machine:
         expr = p["targets"][0]["expr"]
         assert re.match(r"^(max|min|sum)\(", expr), (platform, p["title"], expr)
+
+
+def test_context_used_is_live_while_a_page_is_written_and_holds_between_pages():
+    tile = next(p for p in monitor.dashboard()["panels"] if p.get("title") == "Context used")
+    expr = tile["targets"][0]["expr"]
+    assert "vitals_current_context_tokens or vitals_last_context_used_tokens" in expr
+
+
+def test_a_band_above_the_tiles_names_each_running_model_and_its_phase():
+    panels = monitor.dashboard()["panels"]
+    band = next(p for p in panels if p.get("title") == "Running")
+    assert band["type"] == "stat" and band["gridPos"]["w"] == 24 and band["gridPos"]["y"] == 1
+    assert band["targets"][0]["expr"] == "vitals_current_phase"
+    assert band["targets"][0]["legendFormat"] == "{{model_name}}"
+    assert band["options"]["textMode"] == "value_and_name"  # the model's name beside its phase
+    assert band["options"]["text"]["valueSize"] >= 16  # Grafana shrinks text in a short panel otherwise
+    names = band["fieldConfig"]["defaults"]["mappings"][-1]["options"]
+    assert [names[k]["text"] for k in ("0", "1", "2")] == ["Idle", "Reading (prefill)", "Writing (decode)"]
+    tiles = [p for p in panels if p["type"] == "stat" and p is not band]
+    assert min(p["gridPos"]["y"] for p in tiles) >= 1 + band["gridPos"]["h"]  # tiles start below it
+    strips = [p for p in panels if p.get("title") == "" and p["gridPos"]["w"] == 24]
+    assert not strips  # no trend strip under the band

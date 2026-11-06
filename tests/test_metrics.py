@@ -163,3 +163,27 @@ def test_a_refused_request_is_counted_as_failed_not_as_an_invalid_answer():
     m.finished({"failed": "HTTP 400"})
     text = m.render()
     assert "vitals_requests_failed_total 1" in text and "vitals_answers_invalid_total 0" in text
+
+
+def test_context_in_use_grows_while_a_long_answer_is_written():
+    m = metrics.Metrics(total=1, kv_per_token=0, context_limit=32768)
+    assert "vitals_context_limit_tokens 32768" in m.render()  # known before the first page finishes
+    m.started({"id": "p1"})
+    assert "vitals_current_context_tokens" not in m.render()  # prompt size not known yet
+    m.progress(tokens=3000, writing_seconds=180.0, prompt_tokens=2700)
+    assert "vitals_current_context_tokens 5700" in m.render()
+    m.finished(_record(1, 1.0))
+    assert "vitals_current_context_tokens" not in m.render()  # between pages the last page's number holds
+
+
+def test_tokens_count_as_they_are_written_not_only_when_the_page_ends():
+    m = metrics.Metrics(total=2, kv_per_token=0)
+    m.started({"id": "p1"})
+    m.progress(tokens=3000, writing_seconds=180.0)
+    assert "vllm:generation_tokens_total 3000" in m.render()
+    m.finished({**_record(1, 1.0), "generation_tokens": 3001})
+    assert "vllm:generation_tokens_total 3001" in m.render()  # the final count replaces the live one
+    m.started({"id": "p2"})
+    m.progress(tokens=10, writing_seconds=1.0)
+    m.finished({**_record(1, 1.0), "generation_tokens": 9})  # never counts down
+    assert "vllm:generation_tokens_total 3011" in m.render()

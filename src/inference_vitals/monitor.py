@@ -150,7 +150,10 @@ def _panel(title, exprs, unit, x, y, w=12, h=8, kind="timeseries"):
 
 THERMAL_NAMES = ["Nominal", "Fair", "Serious", "Critical"]
 TILE_H, STRIP_H = 3, 2  # a number, and under it a small trend strip (a graph behind the number hides it)
-ROW2 = 1 + TILE_H + STRIP_H
+BAND_H = 2  # "Running": each model and what it is doing, above the tiles
+ROW1 = 1 + BAND_H
+ROW2 = ROW1 + TILE_H + STRIP_H
+PHASE_NAMES = ["Idle", "Reading (prefill)", "Writing (decode)"]  # metrics.IDLE, READING, WRITING
 STRIP_COLOUR = "rgba(140, 140, 140, 0.7)"
 STRIP_IDS = 101  # strips are numbered apart, so the detail panels keep their ids (?viewPanel=31)
 
@@ -178,7 +181,18 @@ def _strip(tile: dict) -> dict:
 
 
 def _stat(
-    title, expr, unit, x, y, warn=None, bad=None, legend="{{model_name}}", low_is_bad=False, w=3, names=None
+    title,
+    expr,
+    unit,
+    x,
+    y,
+    warn=None,
+    bad=None,
+    legend="{{model_name}}",
+    low_is_bad=False,
+    w=3,
+    names=None,
+    h=TILE_H,
 ):
     """A big number on its own; trends are in the chart below and the folded sections. Colours: amber at `warn` and red at `bad` (or, with
     low_is_bad, red below `bad` and amber below `warn`)."""
@@ -192,7 +206,7 @@ def _stat(
         steps = [{"color": "green", "value": None}]
         steps += [{"color": "orange", "value": warn}] if warn is not None else []
         steps += [{"color": "red", "value": bad}] if bad is not None else []
-    p = _panel(title, [(expr, legend)], unit, x, y, w, TILE_H, "stat")
+    p = _panel(title, [(expr, legend)], unit, x, y, w, h, "stat")
     for t in p["targets"]:  # now, not "last value in the time range": a finished run drops off at once
         t["instant"], t["range"] = True, False
     p["fieldConfig"]["defaults"]["thresholds"] = {"mode": "absolute", "steps": steps}
@@ -253,7 +267,8 @@ HW = {
 SWAP_RATE = (
     "max(rate(vitals_host_swapped_in_bytes_total[1m])) + max(rate(vitals_host_swapped_out_bytes_total[1m]))"
 )
-CONTEXT = "vitals_last_context_used_tokens / vitals_context_limit_tokens"
+# live while a page is written (page + tokens so far); between pages, the last page in full
+CONTEXT = "(vitals_current_context_tokens or vitals_last_context_used_tokens) / vitals_context_limit_tokens"
 TOK_S = "suffix: tok/s"
 
 
@@ -461,7 +476,7 @@ def dashboard(platform: str = MAC) -> dict:
         0,
         ROW2 + TILE_H + STRIP_H,
         24,
-        9,
+        7,
     )
     live["fieldConfig"]["overrides"] = [
         {
@@ -472,6 +487,10 @@ def dashboard(platform: str = MAC) -> dict:
             ],
         }
     ]
+    running = _stat("Running", "vitals_current_phase", "none", 0, 1, w=24, names=PHASE_NAMES, h=BAND_H)
+    running["options"].update(
+        textMode="value_and_name", colorMode="none", text={"titleSize": 16, "valueSize": 16}
+    )
     overview = [
         _row("At a glance", 0, collapsed=False),
         # The run: what is happening now, and anything going wrong with the answers.
@@ -480,15 +499,15 @@ def dashboard(platform: str = MAC) -> dict:
             "(vitals_pages_done + vitals_pages_already_answered) / vitals_pages_total",
             "percentunit",
             0,
-            1,
+            ROW1,
         ),
-        _stat("Writing now", "vitals_current_generation_tps", TOK_S, 3, 1),
-        _stat("TTFT (median)", TTFT_Q.format(q=0.5), "s", 6, 1, warn=15, bad=30),
-        _stat("Reading speed", "vitals_last_prompt_tps", TOK_S, 9, 1),
-        _stat("Context used", CONTEXT, "percentunit", 12, 1, warn=0.75, bad=1.0),
-        _stat("Answers cut off", "vitals_answers_cut_off_total", "none", 15, 1, warn=1, bad=5),
-        _stat("Invalid answers", "vitals_answers_invalid_total", "none", 18, 1, warn=1, bad=5),
-        _stat("Cold start TTFT", "vitals_cold_ttft_s", "s", 21, 1),
+        _stat("Writing now", "vitals_current_generation_tps", TOK_S, 3, ROW1),
+        _stat("TTFT (median)", TTFT_Q.format(q=0.5), "s", 6, ROW1, warn=15, bad=30),
+        _stat("Reading speed", "vitals_last_prompt_tps", TOK_S, 9, ROW1),
+        _stat("Context used", CONTEXT, "percentunit", 12, ROW1, warn=0.75, bad=1.0),
+        _stat("Answers cut off", "vitals_answers_cut_off_total", "none", 15, ROW1, warn=1, bad=5),
+        _stat("Invalid answers", "vitals_answers_invalid_total", "none", 18, ROW1, warn=1, bad=5),
+        _stat("Cold start TTFT", "vitals_cold_ttft_s", "s", 21, ROW1),
         # The machine: memory first, since that is what fails first with a big model.
         _stat(
             "GPU mem left",
@@ -617,7 +636,9 @@ def dashboard(platform: str = MAC) -> dict:
         for p in [row, *row["panels"]]:
             p["gridPos"]["y"] += shift
     panel_id, strip_id = 0, STRIP_IDS
-    for panel in overview + details:  # ids let a single panel be opened on its own (?viewPanel=<id>)
+    # ids let a single panel be opened on its own (?viewPanel=<id>); the band, added later, numbers last
+    # so the ids already in use stay put
+    for panel in overview + details + [running]:
         for p in [panel, *panel.get("panels", [])]:
             if p["title"] == "":
                 p["id"], strip_id = strip_id, strip_id + 1
@@ -633,7 +654,7 @@ def dashboard(platform: str = MAC) -> dict:
         "time": {"from": "now-3h", "to": "now"},
         "refresh": "10s",
         "tags": ["inference-vitals"],
-        "panels": overview + details,
+        "panels": [overview[0], running, *overview[1:], *details],
     }
 
 
