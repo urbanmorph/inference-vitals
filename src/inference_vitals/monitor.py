@@ -225,6 +225,19 @@ CONTEXT = "vitals_last_context_used_tokens / vitals_context_limit_tokens"
 TOK_S = "suffix: tok/s"
 
 
+def _flow(panels: list, y: int):
+    """Lay panels out in their listed order: a full-width one on its own line, half-width ones in pairs."""
+    x = 0
+    for p in panels:
+        g = p["gridPos"]
+        if x + g["w"] > 24:
+            x, y = 0, y + 8
+        g["x"], g["y"] = x, y
+        x += g["w"]
+        if x >= 24:
+            x, y = 0, y + g["h"]
+
+
 def dashboard() -> dict:
     m = "{{model_name}}"
     live = _panel(
@@ -385,7 +398,7 @@ def dashboard() -> dict:
                         ("vitals_peak_memory_bytes", f"peak {m}"),
                         ("vitals_cache_memory_bytes", f"kept for reuse {m}"),
                         ("vitals_kv_cache_estimate_bytes", f"KV cache (estimate) {m}"),
-                        ("vitals_gpu_memory_limit_bytes", f"GPU limit {m}"),
+                        ("max(vitals_gpu_memory_limit_bytes)", "GPU limit"),  # the Mac's, not a model's
                     ],
                     "decbytes",
                     0,
@@ -490,6 +503,17 @@ def dashboard() -> dict:
             ],
         ),
     ]
+    for row in details:
+        for p in row["panels"]:
+            # Several lines per model make long names: list them in a table beside the chart, with their
+            # latest and highest values, and give the chart the full width so the table has room.
+            if len(p["targets"]) >= 2 and any("{{model_name}}" in t["legendFormat"] for t in p["targets"]):
+                p["options"] = {
+                    "legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]},
+                    "tooltip": {"mode": "multi"},
+                }
+                p["gridPos"]["w"] = 24
+        _flow(row["panels"], row["gridPos"]["y"] + 1)
     shift = live["gridPos"]["y"] + live["gridPos"]["h"] - 18  # details were laid out to start at y=18
     for row in details:
         for p in [row, *row["panels"]]:

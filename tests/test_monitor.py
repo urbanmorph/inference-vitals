@@ -186,3 +186,33 @@ def test_grafana_is_view_only_and_nothing_can_be_sent_off_the_mac():
     assert c["plugins"]["preinstall_disabled"] == "true"  # no plugin downloads from grafana.com at start
     assert c["unified_alerting"]["enabled"] == "false"  # no alert engine running with no alerts
     assert c["auth.anonymous"]["enabled"] == "true" and c["auth.anonymous"]["org_role"] == "Viewer"
+
+
+def test_charts_split_by_model_list_their_lines_in_a_table_beside_the_chart():
+    folded = [
+        p for row in monitor.dashboard()["panels"] if row["type"] == "row" for p in row.get("panels", [])
+    ]
+    for p in folded:  # the overview's one wide chart keeps its short legend underneath
+        per_model = any("{{model_name}}" in t["legendFormat"] for t in p["targets"])
+        legend = p.get("options", {}).get("legend", {})
+        if per_model and len(p["targets"]) >= 2:
+            assert legend.get("displayMode") == "table" and legend.get("placement") == "right", p["title"]
+            assert legend.get("calcs") == ["lastNotNull", "max"], p["title"]
+            assert p["gridPos"]["w"] == 24 and p["gridPos"]["x"] == 0, p["title"]  # room for the table
+
+
+def test_the_gpu_limit_is_one_line_not_one_per_model():
+    memory = next(p for p in _all_panels(monitor.dashboard()) if p["title"].startswith("MLX GPU memory"))
+    limit = [t for t in memory["targets"] if "gpu_memory_limit" in t["expr"]]
+    assert len(limit) == 1 and limit[0]["expr"].startswith("max(") and "{{" not in limit[0]["legendFormat"]
+
+
+def test_folded_charts_never_overlap():
+    for row in monitor.dashboard()["panels"]:
+        cells = set()
+        for p in row.get("panels", []):
+            g = p["gridPos"]
+            mine = {(x, y) for x in range(g["x"], g["x"] + g["w"]) for y in range(g["y"], g["y"] + g["h"])}
+            assert not (mine & cells), (row["title"], p["title"])
+            assert g["x"] + g["w"] <= 24
+            cells |= mine
