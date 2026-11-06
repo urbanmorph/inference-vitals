@@ -127,3 +127,15 @@ def test_an_empty_tile_shows_a_neutral_dash_not_a_red_no_data():
                 "type": "special",
                 "options": {"match": "null", "result": {"text": "–", "color": "text"}},
             } in d["mappings"]
+
+
+def test_the_thermal_tile_is_live_and_named():
+    tile = next(p for p in monitor.dashboard()["panels"] if p.get("title") == "Thermal")
+    assert tile["targets"][0]["expr"] == "vitals_mac_thermal_state"
+    names = {
+        m["options"][str(v)]["text"]
+        for m in tile["fieldConfig"]["defaults"]["mappings"]
+        if m["type"] == "value"
+        for v in range(4)
+    }
+    assert names == {"Nominal", "Fair", "Serious", "Critical"}

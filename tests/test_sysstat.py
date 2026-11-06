@@ -30,9 +30,27 @@ def test_render_has_every_number_with_fake_readers():
             "vm_stat": VM,
             "kern.memorystatus_level": "77",
             "vm.swapusage": "total = 1024.00M  used = 512.00M  free = 512.00M",
-        }[cmd]
+        }[cmd],
+        thermal=lambda: 2,
     )
     text = s.render()
     for name in sysstat.METRICS:
         assert name in text, name
     assert "vitals_mac_memory_free_percent 77" in text
+    assert "vitals_mac_thermal_state 2" in text
+
+
+def test_thermal_state_is_read_live_from_macos():
+    assert sysstat.thermal_state() in (0, 1, 2, 3)
+
+
+def test_a_thermal_state_that_cannot_be_read_is_left_out():
+    s = sysstat.Sysstat(
+        read=lambda cmd: {
+            "vm_stat": VM,
+            "kern.memorystatus_level": "77",
+            "vm.swapusage": "total = 1024.00M  used = 512.00M  free = 512.00M",
+        }[cmd],
+        thermal=lambda: None,
+    )
+    assert "thermal_state" not in s.render()

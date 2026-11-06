@@ -30,7 +30,7 @@ listens on `127.0.0.1` only.
 | **TTFT (median)**: time to first token | **Swap in/out**: bytes moving to and from swap right now |
 | **Reading speed**: prompt tokens per second | **GPU busy** |
 | **Context used** against the limit you set | **GPU temp** (amber at 85 °C, red at 95 °C) |
-| **Answers cut off** at the token limit | **Thermal**: macOS's thermal warning level |
+| **Answers cut off** at the token limit | **Thermal**: macOS's thermal state, live: Nominal, Fair (warm), Serious (slowing down), Critical |
 | **Invalid answers** (not the format you asked for) | **Mac power**, the whole machine, in watts |
 | **Cold start TTFT**: the first answer after loading | **Energy/token**: joules per answer token |
 

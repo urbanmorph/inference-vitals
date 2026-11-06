@@ -115,7 +115,12 @@ def _panel(title, exprs, unit, x, y, w=12, h=8, kind="timeseries"):
     }
 
 
-def _stat(title, expr, unit, x, y, warn=None, bad=None, legend="{{model_name}}", low_is_bad=False, w=3):
+THERMAL_NAMES = ["Nominal", "Fair", "Serious", "Critical"]
+
+
+def _stat(
+    title, expr, unit, x, y, warn=None, bad=None, legend="{{model_name}}", low_is_bad=False, w=3, names=None
+):
     """A big number with a small trend line under it. Colours: amber at `warn` and red at `bad` (or, with
     low_is_bad, red below `bad` and amber below `warn`)."""
     if low_is_bad:
@@ -135,6 +140,10 @@ def _stat(title, expr, unit, x, y, warn=None, bad=None, legend="{{model_name}}",
     p["fieldConfig"]["defaults"]["mappings"] = [
         {"type": "special", "options": {"match": "null", "result": {"text": "–", "color": "text"}}}
     ]
+    if names:  # numbers that stand for states: show the state's name
+        p["fieldConfig"]["defaults"]["mappings"].append(
+            {"type": "value", "options": {str(n): {"text": t, "index": n} for n, t in enumerate(names)}}
+        )
     p["options"] = {
         "graphMode": "area",
         "colorMode": "value",
@@ -222,7 +231,17 @@ def dashboard() -> dict:
         _stat("Swap in/out", SWAP_RATE, "Bps", 6, 5, warn=10e6, bad=100e6, legend=""),
         _stat("GPU busy", "macmon_gpu_active_ratio", "percentunit", 9, 5, legend=""),
         _stat("GPU temp", "macmon_gpu_temp_celsius", "celsius", 12, 5, warn=85, bad=95, legend=""),
-        _stat("Thermal", "vitals_last_thermal_warning", "none", 15, 5, warn=1, bad=2),
+        _stat(
+            "Thermal",
+            "vitals_mac_thermal_state",
+            "none",
+            15,
+            5,
+            warn=1,
+            bad=2,
+            legend="",
+            names=THERMAL_NAMES,
+        ),
         _stat("Mac power", "macmon_sys_power_watts", "watt", 18, 5, legend=""),
         _stat("Energy/token", JOULES, "suffix: J/tok", 21, 5, legend=""),
         live,
@@ -399,8 +418,9 @@ def dashboard() -> dict:
                     30,
                 ),
                 _panel(
-                    "Thermal warning and CPU speed limit",
+                    "Thermal state, warning and CPU speed limit",
                     [
+                        ("vitals_mac_thermal_state", "thermal state (0 nominal to 3 critical)"),
                         ("vitals_last_thermal_warning", f"warning level {m}"),
                         ("vitals_last_cpu_speed_limit", f"CPU limit % {m}"),
                     ],
