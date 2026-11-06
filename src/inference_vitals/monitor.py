@@ -116,6 +116,32 @@ def _panel(title, exprs, unit, x, y, w=12, h=8, kind="timeseries"):
 
 
 THERMAL_NAMES = ["Nominal", "Fair", "Serious", "Critical"]
+TILE_H, STRIP_H = 3, 2  # a number, and under it a small trend strip (a graph behind the number hides it)
+ROW2 = 1 + TILE_H + STRIP_H
+STRIP_COLOUR = "rgba(140, 140, 140, 0.7)"
+STRIP_IDS = 101  # strips are numbered apart, so the detail panels keep their ids (?viewPanel=31)
+
+
+def _strip(tile: dict) -> dict:
+    """A frameless line chart under a tile: the same numbers over time, no title, axes or legend."""
+    g = tile["gridPos"]
+    s = _panel("", [], tile["fieldConfig"]["defaults"]["unit"], g["x"], g["y"] + g["h"], g["w"], STRIP_H)
+    s["targets"] = [dict(t) for t in tile["targets"]]
+    s["transparent"] = True
+    stepped = any(m["type"] == "value" for m in tile["fieldConfig"]["defaults"]["mappings"])
+    # Quiet grey, so the eye goes to the number; Grafana cannot fade a graph drawn inside the tile itself.
+    s["fieldConfig"]["defaults"]["color"] = {"mode": "fixed", "fixedColor": STRIP_COLOUR}
+    s["fieldConfig"]["defaults"]["custom"] = {
+        "axisPlacement": "hidden",
+        "lineWidth": 1,
+        "fillOpacity": 8,
+        "gradientMode": "opacity",
+        "showPoints": "never",
+        "spanNulls": True,
+        "lineInterpolation": "stepAfter" if stepped else "linear",
+    }
+    s["options"] = {"legend": {"showLegend": False}, "tooltip": {"mode": "multi"}}
+    return s
 
 
 def _stat(
@@ -133,7 +159,7 @@ def _stat(
         steps = [{"color": "green", "value": None}]
         steps += [{"color": "orange", "value": warn}] if warn is not None else []
         steps += [{"color": "red", "value": bad}] if bad is not None else []
-    p = _panel(title, [(expr, legend)], unit, x, y, w, 4, "stat")
+    p = _panel(title, [(expr, legend)], unit, x, y, w, TILE_H, "stat")
     p["fieldConfig"]["defaults"]["thresholds"] = {"mode": "absolute", "steps": steps}
     # A tile with nothing to show yet reads "–" in the text colour, not "No data" in the alarm colour.
     p["fieldConfig"]["defaults"]["noValue"] = "–"
@@ -185,7 +211,7 @@ def dashboard() -> dict:
         ],
         TOK_S,
         0,
-        9,
+        ROW2 + TILE_H + STRIP_H,
         24,
         9,
     )
@@ -216,36 +242,37 @@ def dashboard() -> dict:
         _stat("Invalid answers", "vitals_answers_invalid_total", "none", 18, 1, warn=1, bad=5),
         _stat("Cold start TTFT", "vitals_cold_ttft_s", "s", 21, 1),
         # The Mac: memory first, since that is what fails first with a big model.
-        _stat("GPU mem left", HEADROOM, "decbytes", 0, 5, warn=4e9, bad=2e9, low_is_bad=True),
+        _stat("GPU mem left", HEADROOM, "decbytes", 0, ROW2, warn=4e9, bad=2e9, low_is_bad=True),
         _stat(
             "Memory free",
             "vitals_mac_memory_free_percent",
             "percent",
             3,
-            5,
+            ROW2,
             warn=30,
             bad=15,
             legend="",
             low_is_bad=True,
         ),
-        _stat("Swap in/out", SWAP_RATE, "Bps", 6, 5, warn=10e6, bad=100e6, legend=""),
-        _stat("GPU busy", "macmon_gpu_active_ratio", "percentunit", 9, 5, legend=""),
-        _stat("GPU temp", "macmon_gpu_temp_celsius", "celsius", 12, 5, warn=85, bad=95, legend=""),
+        _stat("Swap in/out", SWAP_RATE, "Bps", 6, ROW2, warn=10e6, bad=100e6, legend=""),
+        _stat("GPU busy", "macmon_gpu_active_ratio", "percentunit", 9, ROW2, legend=""),
+        _stat("GPU temp", "macmon_gpu_temp_celsius", "celsius", 12, ROW2, warn=85, bad=95, legend=""),
         _stat(
             "Thermal",
             "vitals_mac_thermal_state",
             "none",
             15,
-            5,
+            ROW2,
             warn=1,
             bad=2,
             legend="",
             names=THERMAL_NAMES,
         ),
-        _stat("Mac power", "macmon_sys_power_watts", "watt", 18, 5, legend=""),
-        _stat("Energy/token", JOULES, "suffix: J/tok", 21, 5, legend=""),
+        _stat("Mac power", "macmon_sys_power_watts", "watt", 18, ROW2, legend=""),
+        _stat("Energy/token", JOULES, "suffix: J/tok", 21, ROW2, legend=""),
         live,
     ]
+    overview += [_strip(p) for p in overview if p["type"] == "stat"]
     details = [
         _row(
             "Speed detail",
@@ -439,11 +466,18 @@ def dashboard() -> dict:
             ],
         ),
     ]
-    panel_id = 0
+    shift = live["gridPos"]["y"] + live["gridPos"]["h"] - 18  # details were laid out to start at y=18
+    for row in details:
+        for p in [row, *row["panels"]]:
+            p["gridPos"]["y"] += shift
+    panel_id, strip_id = 0, STRIP_IDS
     for panel in overview + details:  # ids let a single panel be opened on its own (?viewPanel=<id>)
         for p in [panel, *panel.get("panels", [])]:
-            panel_id += 1
-            p["id"] = panel_id
+            if p["title"] == "":
+                p["id"], strip_id = strip_id, strip_id + 1
+            else:
+                panel_id += 1
+                p["id"] = panel_id
     return {
         "uid": "inference-vitals",
         "title": "Inference Vitals",

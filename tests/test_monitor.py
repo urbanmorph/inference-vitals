@@ -147,3 +147,23 @@ def test_tiles_show_plain_numbers_with_no_graph_behind_them_and_name_each_model(
     for t in tiles:
         assert t["options"]["graphMode"] == "none", t["title"]
         assert t["options"]["textMode"] == "auto", t["title"]  # a name above each number when two models show
+
+
+def test_every_tile_has_a_small_trend_strip_right_under_it():
+    panels = monitor.dashboard()["panels"]
+    tiles = [p for p in panels if p["type"] == "stat"]
+    strips = {(p["gridPos"]["x"], p["gridPos"]["y"]): p for p in panels if p.get("title") == ""}
+    assert len(strips) == len(tiles) == 16
+    for t in tiles:
+        g = t["gridPos"]
+        s = strips[(g["x"], g["y"] + g["h"])]
+        assert s["type"] == "timeseries" and s["gridPos"]["w"] == g["w"] and s["transparent"]
+        assert [x["expr"] for x in s["targets"]] == [x["expr"] for x in t["targets"]]
+        assert s["fieldConfig"]["defaults"]["custom"]["axisPlacement"] == "hidden"
+        assert not s["options"]["legend"]["showLegend"]
+        assert s["fieldConfig"]["defaults"]["color"] == {"mode": "fixed", "fixedColor": monitor.STRIP_COLOUR}
+
+
+def test_panel_ids_the_screenshots_open_stay_put():
+    by_id = {p["id"]: p["title"] for p in _all_panels(monitor.dashboard())}
+    assert "memory" in by_id[31].lower() and "power" in by_id[37].lower()
