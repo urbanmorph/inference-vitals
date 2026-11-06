@@ -12,7 +12,11 @@ MODES = {"0": "normal", "1": "low power", "2": "high power"}
 
 
 def _out(*cmd) -> str:
-    return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+    """A command's output, or "" when the command does not exist (macOS tools on Linux)."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+    except FileNotFoundError:
+        return ""
 
 
 def thermal(text: str) -> dict:

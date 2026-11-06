@@ -45,3 +45,7 @@ def test_snapshot_has_the_fields_a_run_needs():
         "busy_processes",
     ):
         assert key in snap
+
+
+def test_a_missing_command_gives_an_empty_answer_not_a_crash():
+    assert conditions._out("no-such-command-anywhere") == ""

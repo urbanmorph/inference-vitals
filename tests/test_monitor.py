@@ -1,7 +1,9 @@
 import json
 import re
 
-from inference_vitals import metrics, monitor, sysstat
+import pytest
+
+from inference_vitals import gpustat, metrics, monitor, sysstat
 
 
 def _known_metric_names():
@@ -33,7 +35,10 @@ def _known_metric_names():
         }
     )
     ours = {line.split("{")[0].split(" ")[0] for line in m.render().splitlines()}
-    return ours | set(monitor.MACMON_METRICS) | set(sysstat.METRICS)
+    return {
+        monitor.MAC: ours | set(monitor.MACMON_METRICS) | set(sysstat.METRICS) | set(sysstat.MAC_ONLY),
+        monitor.LINUX: ours | set(gpustat.METRICS) | set(sysstat.METRICS) | set(sysstat.LINUX_ONLY),
+    }
 
 
 def _all_panels(dashboard):
@@ -48,12 +53,31 @@ def _exprs(dashboard):
             yield panel["title"], t["expr"]
 
 
-def test_every_dashboard_query_uses_a_metric_that_exists():
-    known = _known_metric_names()
-    for title, expr in _exprs(monitor.dashboard()):
+@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+def test_every_dashboard_query_uses_a_metric_that_exists_on_that_platform(platform):
+    known = _known_metric_names()[platform]
+    for title, expr in _exprs(monitor.dashboard(platform)):
         names = set(re.findall(r"\b(?:vllm:|vitals_|macmon_)[A-Za-z0-9_:]+", expr))
         assert names, (title, expr)
-        assert names <= known, (title, names - known)
+        assert names <= known, (platform, title, names - known)
+
+
+def test_the_linux_dashboard_shows_nvidia_numbers_where_the_mac_one_shows_apple_s():
+    tiles = {p["title"]: p for p in monitor.dashboard(monitor.LINUX)["panels"] if p["type"] == "stat"}
+    assert "vitals_gpu_memory_free_bytes" in tiles["GPU mem left"]["targets"][0]["expr"]
+    assert "vitals_gpu_slowdown_state" in tiles["GPU slowdown"]["targets"][0]["expr"]
+    assert "GPU power" in tiles and "Mac power" not in tiles
+    names = {
+        m["options"]["2"]["text"]
+        for m in tiles["GPU slowdown"]["fieldConfig"]["defaults"]["mappings"]
+        if m["type"] == "value"
+    }
+    assert names == {"Thermal"}
+    titles = {p["title"] for p in _all_panels(monitor.dashboard(monitor.LINUX))}
+    assert (
+        "GPU memory (VRAM), used against total" in titles
+        and "MLX GPU memory, against the GPU limit" not in titles
+    )
 
 
 def test_dashboard_panels_point_at_our_prometheus_and_are_json():
@@ -64,16 +88,62 @@ def test_dashboard_panels_point_at_our_prometheus_and_are_json():
             assert p["datasource"]["uid"] == monitor.DATASOURCE_UID
 
 
+TOOLS = {
+    "prometheus": "/usr/bin/prometheus",
+    "grafana": "/usr/sbin/grafana",
+    "grafana_home": "/usr/share/grafana",
+    "macmon": "/opt/homebrew/bin/macmon",
+    "nvidia": True,
+}
+
+
 def test_everything_listens_on_localhost_only():
     prom = monitor.prometheus_config()
     assert "127.0.0.1:8400" in prom and "127.0.0.1:9091" in prom
     ini = monitor.grafana_ini(monitor.STATE, "pw")
     assert "http_addr = 127.0.0.1" in ini
     assert "reporting_enabled = false" in ini and "check_for_updates = false" in ini
-    cmds = monitor.commands(monitor.STATE)
+    cmds = monitor.commands(monitor.STATE, monitor.MAC, TOOLS)
     assert cmds["macmon"][-4:] == ["--host", "127.0.0.1", "--port", "9091"]
     assert "--web.listen-address=127.0.0.1:9090" in cmds["prometheus"]
     assert cmds["sysstat"][-2:] == ["--port", "9092"] and "127.0.0.1:9092" in prom
+
+
+def test_on_linux_the_nvidia_exporter_takes_macmon_s_place():
+    cmds = monitor.commands(monitor.STATE, monitor.LINUX, TOOLS)
+    assert "macmon" not in cmds and cmds["gpustat"][-2:] == ["--port", "9091"]
+    assert cmds["prometheus"][0] == "/usr/bin/prometheus"
+    assert (
+        cmds["grafana"][:2] == ["/usr/sbin/grafana", "server"]
+        and "--homepath=/usr/share/grafana" in cmds["grafana"]
+    )
+    assert "gpustat" not in monitor.commands(monitor.STATE, monitor.LINUX, {**TOOLS, "nvidia": False})
+
+
+def test_tools_are_found_on_the_path_and_grafana_s_home_beside_it(tmp_path):
+    (tmp_path / "bin").mkdir()
+    for name in ("prometheus", "grafana-server"):
+        (tmp_path / "bin" / name).write_text("")
+        (tmp_path / "bin" / name).chmod(0o755)
+    (tmp_path / "share/grafana/conf").mkdir(parents=True)
+    tools = monitor.find_tools(monitor.LINUX, path=str(tmp_path / "bin"), homes=[tmp_path / "nowhere"])
+    assert tools["prometheus"] == str(tmp_path / "bin/prometheus")
+    assert tools["grafana"] == str(
+        tmp_path / "bin/grafana-server"
+    )  # the older name, when that is all there is
+    assert tools["grafana_home"] == str(tmp_path / "share/grafana")
+
+
+def test_an_older_grafana_server_binary_takes_no_server_word():
+    cmds = monitor.commands(monitor.STATE, monitor.LINUX, {**TOOLS, "grafana": "/usr/sbin/grafana-server"})
+    assert cmds["grafana"][1].startswith("--homepath=")
+
+
+def test_the_platform_is_detected():
+    assert monitor.detect_platform("darwin") == monitor.MAC
+    assert monitor.detect_platform("linux") == monitor.LINUX
+    with pytest.raises(SystemExit):
+        monitor.detect_platform("win32")
 
 
 def test_overview_fits_one_screen_and_the_details_start_collapsed():
@@ -131,7 +201,7 @@ def test_an_empty_tile_shows_a_neutral_dash_not_a_red_no_data():
 
 def test_the_thermal_tile_is_live_and_named():
     tile = next(p for p in monitor.dashboard()["panels"] if p.get("title") == "Thermal")
-    assert tile["targets"][0]["expr"] == "vitals_mac_thermal_state"
+    assert tile["targets"][0]["expr"] == "max(vitals_host_thermal_state)"
     names = {
         m["options"][str(v)]["text"]
         for m in tile["fieldConfig"]["defaults"]["mappings"]
@@ -225,3 +295,27 @@ def test_tiles_show_only_what_is_reporting_now_and_strips_keep_the_history():
             assert all(t.get("instant") is True and t.get("range") is False for t in p["targets"]), p["title"]
         if p["type"] == "timeseries":
             assert not any(t.get("instant") for t in p["targets"]), p["title"]
+
+
+def test_missing_tools_are_named_with_how_to_install_them():
+    assert monitor.missing_tools(monitor.MAC, TOOLS) == []
+    gone = monitor.missing_tools(monitor.MAC, {**TOOLS, "macmon": None, "prometheus": None})
+    assert any("macmon" in g and "brew install" in g for g in gone) and any("prometheus" in g for g in gone)
+    linux = monitor.missing_tools(monitor.LINUX, {**TOOLS, "grafana": None, "grafana_home": None})
+    assert any("grafana" in g and "README" in g for g in linux)
+    assert monitor.missing_tools(monitor.LINUX, {**TOOLS, "macmon": None}) == []  # not needed on Linux
+
+
+@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+def test_machine_tiles_always_show_one_number(platform):
+    """A tile about the machine (not a model) is one figure, even when Prometheus briefly holds two copies
+    of a series, e.g. after a job is renamed; so its query is wrapped in max(), min() or sum()."""
+    machine = [
+        p
+        for p in monitor.dashboard(platform)["panels"]
+        if p["type"] == "stat" and p["targets"][0]["legendFormat"] == ""
+    ]
+    assert len(machine) == 8
+    for p in machine:
+        expr = p["targets"][0]["expr"]
+        assert re.match(r"^(max|min|sum)\(", expr), (platform, p["title"], expr)

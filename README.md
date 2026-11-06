@@ -1,7 +1,8 @@
 # inference-vitals
 
-**One screen for running AI models on an Apple Silicon Mac: how fast the model is, how close it is to
-running out of memory, and how hot the Mac is getting, on the same timeline.**
+**One screen for running AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs (experimental):
+how fast the model is, how close it is to running out of memory, and how hot the machine is getting, on
+the same timeline.**
 
 ![At a glance, during a run: speed, context, answers, memory, swap, GPU, heat and power](docs/screenshots/at-a-glance-dark.png)
 
@@ -15,15 +16,15 @@ LocalAI, or your own Python code. A small proxy in front of the engine measures 
 streams through; your code can also report directly.
 
 It is [Prometheus](https://prometheus.io) and [Grafana](https://grafana.com) with a ready-made dashboard,
-[macmon](https://github.com/vladkens/macmon) for the chip, a small exporter for macOS memory, the proxy,
-and a tiny Python library, with no dependencies beyond Python itself. Everything runs on your Mac and
-listens on `127.0.0.1` only.
+[macmon](https://github.com/vladkens/macmon) for the chip on a Mac (on Linux, a small exporter that reads
+`nvidia-smi`), a small exporter for memory, the proxy, and a tiny Python library, with no dependencies
+beyond Python itself. Everything runs on your machine and listens on `127.0.0.1` only.
 
 ## What it shows
 
 **At a glance**, sixteen numbers, each with a quiet trend line under it, and one chart:
 
-| The run | The Mac |
+| The run | The machine (Mac; differences on Linux below) |
 | --- | --- |
 | **Progress** through the current run | **GPU mem left**: memory left before macOS's limit for the GPU |
 | **Writing now**: tokens per second, live, while the answer is written | **Memory free**, macOS's own memory-pressure level |
@@ -33,6 +34,12 @@ listens on `127.0.0.1` only.
 | **Answers cut off** at the token limit | **Thermal**: macOS's thermal state, live: Nominal, Fair (warm), Serious (slowing down), Critical |
 | **Invalid answers** (not the format you asked for) | **Mac power**, the whole machine, in watts |
 | **Cold start TTFT**: the first answer after loading | **Energy/token**: joules per answer token |
+
+On Linux with NVIDIA, the machine column changes where the hardware differs: **GPU mem left** is free
+VRAM (summed over GPUs), **GPU slowdown** replaces Thermal (the GPU's own reasons for running below full
+speed: None, Power cap, which is normal under full load, Thermal, Hardware), **GPU power** replaces Mac
+power, and **Energy/token** counts the GPUs only. The folded sections show VRAM used against total per
+GPU, GPU power against its limit, GPU and CPU temperatures, clocks, slowdown and fan speed.
 
 The chart plots writing speed against GPU temperature, which is usually the first thing to look at
 when a long run slows down.
@@ -72,12 +79,35 @@ running) and waits until each one answers. `uv run inference-vitals status` show
 
 | Service | Address | What it does |
 | --- | --- | --- |
-| macmon | `127.0.0.1:9091` | Chip numbers: CPU and GPU use, clock speeds, power, temperatures, fans. No `sudo`. |
-| Memory exporter | `127.0.0.1:9092` | Swap activity, memory pressure and swap in use, from `vm_stat` and `sysctl`. |
+| macmon (Mac) or the NVIDIA exporter (Linux) | `127.0.0.1:9091` | Chip numbers: GPU (and on a Mac, CPU) use, clock speeds, power, temperatures, fans. No `sudo`. |
+| Memory exporter | `127.0.0.1:9092` | Swap activity, free memory and swap in use (and on Linux, CPU use and temperature), from `vm_stat` and `sysctl` or `/proc`. |
 | Prometheus | `127.0.0.1:9090` | Reads everything every 5 seconds and keeps 30 days of history. |
 | Grafana | `127.0.0.1:3000` | The dashboard, view-only. Sign-in is switched off (Grafana still shows the button); change the dashboard in `monitor.py` instead. |
 
 Nothing starts by itself at login; run `start` when you want to watch something.
+
+### Linux with NVIDIA GPUs (experimental)
+
+Written and tested against recorded `nvidia-smi` and `/proc` output, not yet on real NVIDIA hardware: if
+you run it, please open an issue with what you see. You need the NVIDIA driver (which brings
+`nvidia-smi`), [uv](https://docs.astral.sh/uv/), Prometheus and Grafana:
+
+```sh
+# Prometheus: your distribution's package (Debian/Ubuntu: sudo apt install prometheus) or the release
+# tarball from prometheus.io; only the `prometheus` binary needs to be on your PATH.
+# Grafana: Grafana's own package repository (https://grafana.com/docs/grafana/latest/setup-grafana/installation/)
+# If the packages start their own services, stop them first (sudo systemctl disable --now prometheus grafana-server):
+# inference-vitals runs its own copies on 127.0.0.1 with its own settings.
+git clone https://github.com/urbanmorph/inference-vitals.git
+cd inference-vitals
+uv run inference-vitals start
+xdg-open http://127.0.0.1:3000/d/inference-vitals
+```
+
+On Linux the chip exporter on `127.0.0.1:9091` reads `nvidia-smi` instead of running macmon, and the
+memory exporter reads `/proc` (memory, swap, CPU busy share) and the CPU's own temperature sensor. Without
+`nvidia-smi` the GPU numbers stay empty and the rest still works. The proxy works the same on Linux; it
+never cared which machine it runs on. Windows is not supported (under WSL2, the Linux route may work).
 
 ## Getting the model's numbers on it
 
@@ -154,7 +184,7 @@ program on the Mac can read `127.0.0.1`; the proxy does not store or log what pa
 
 ## Run conditions
 
-`inference_vitals.conditions.snapshot()` returns what the Mac was doing at a moment: thermal and
+`inference_vitals.conditions.snapshot()` (macOS only, for now) returns what the Mac was doing at a moment: thermal and
 performance warnings, the CPU speed limit, mains or battery, the power mode, the GPU memory limit setting,
 the macOS version, and any process using more than 20% CPU (by name only). Store it with your results:
 a slow run on a hot or busy Mac then explains itself. Spotlight indexing and Photos analysis
@@ -185,13 +215,15 @@ per second.
   stay near zero during a run; if it does not, something else is using it.
 - **Image tokens apart from text tokens**, unless your code reports them.
 - **Intel Macs.** macmon needs Apple Silicon.
+- **On Linux:** whole-machine power (only the GPUs' own power is reported; the CPU's needs root), AMD
+  and Intel GPUs, and Windows.
 
 ## Uninstall
 
 ```sh
 uv run inference-vitals stop
 rm -rf ~/.local/state/inference-vitals
-brew uninstall prometheus grafana macmon   # if nothing else uses them
+brew uninstall prometheus grafana macmon   # on a Mac, if nothing else uses them
 ```
 
 ## Development
@@ -209,8 +241,8 @@ The dashboard is generated by `src/inference_vitals/monitor.py`; change it there
 
 inference-vitals runs [macmon](https://github.com/vladkens/macmon) (MIT),
 [Prometheus](https://github.com/prometheus/prometheus) (Apache-2.0) and
-[Grafana](https://github.com/grafana/grafana) (AGPL-3.0), installed separately through Homebrew; none of
-them is bundled here.
+[Grafana](https://github.com/grafana/grafana) (AGPL-3.0), installed separately (Homebrew on a Mac, your
+package manager on Linux); none of them is bundled here.
 
 ## Licence
 

@@ -1,13 +1,17 @@
-"""The Mac's memory as Prometheus numbers, all the time, on 127.0.0.1:9092 (started by inference-vitals).
+"""The machine's memory (and on Linux its CPU) as Prometheus numbers, all the time, on 127.0.0.1:9092
+(started by inference-vitals).
 
-macmon reports swap in use, but macOS keeps old swap around for hours, so that number says little. What
-shows a model being squeezed is swap *activity* (bytes moved in and out of swap, as counters Prometheus
-turns into a rate) and macOS's own memory-pressure level (percent of memory free, as `memory_pressure`
-reports it). All read from vm_stat and sysctl, with no sudo, each time Prometheus asks.
+What shows a model being squeezed is swap *activity* (bytes moved in and out of swap, as counters
+Prometheus turns into a rate) and the system's own measure of free memory; swap merely in use says
+little, since both macOS and Linux keep old swap around for hours.
 
-Also macOS's thermal state (0 nominal, 1 fair, 2 serious, 3 critical), the one apps are told to slow
-down by. It rises with heat well before the throttling warning that `pmset -g therm` reports, which stays
-at 0 until macOS is actually cutting the chip's speed.
+- macOS: vm_stat and sysctl (memory pressure as `memory_pressure` reports it), plus macOS's thermal
+  state (0 nominal, 1 fair, 2 serious, 3 critical), which rises with heat well before the throttling
+  warning `pmset -g therm` reports. CPU numbers come from macmon.
+- Linux: /proc/meminfo (MemAvailable), /proc/vmstat (swap and paging), /proc/stat (CPU busy share) and
+  the CPU's own temperature sensor under /sys/class/hwmon.
+
+No sudo, read each time Prometheus asks.
 
   python -m inference_vitals.sysstat --port 9092
 """
@@ -15,26 +19,31 @@ at 0 until macOS is actually cutting the chip's speed.
 import argparse
 import ctypes
 import ctypes.util
+import os
+import pathlib
 import re
 import subprocess
+import sys
 import time
 
-METRICS = [
-    "vitals_mac_swapped_in_bytes_total",
-    "vitals_mac_swapped_out_bytes_total",
-    "vitals_mac_paged_in_bytes_total",
-    "vitals_mac_paged_out_bytes_total",
-    "vitals_mac_memory_free_percent",
-    "vitals_mac_swap_total_bytes",
-    "vitals_mac_swap_used_bytes",
-    "vitals_mac_thermal_state",
+METRICS = [  # on every platform
+    "vitals_host_swapped_in_bytes_total",
+    "vitals_host_swapped_out_bytes_total",
+    "vitals_host_paged_in_bytes_total",
+    "vitals_host_paged_out_bytes_total",
+    "vitals_host_memory_free_percent",
+    "vitals_host_swap_total_bytes",
+    "vitals_host_swap_used_bytes",
 ]
+MAC_ONLY = ["vitals_host_thermal_state"]
+LINUX_ONLY = ["vitals_host_cpu_busy_ratio", "vitals_host_cpu_temp_celsius"]
 VM_FIELDS = {
     "Swapins": "swapped_in",
     "Swapouts": "swapped_out",
     "Pageins": "paged_in",
     "Pageouts": "paged_out",
 }
+CPU_SENSORS = {"coretemp", "k10temp", "zenpower", "cpu_thermal"}  # Intel, AMD, AMD (alt driver), ARM boards
 
 
 def parse_vm_stat(text: str) -> dict:
@@ -74,27 +83,12 @@ def thermal_state():
     return state if state in (0, 1, 2, 3) else None
 
 
-def _read(name: str) -> str:
+def _mac_read(name: str) -> str:
     cmd = ["vm_stat"] if name == "vm_stat" else ["sysctl", "-n", name]
     return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
 
 
-class Sysstat:
-    def __init__(self, read=_read, thermal=thermal_state):
-        self.read, self.thermal = read, thermal
-
-    def values(self) -> dict:
-        v = {f"vitals_mac_{k}": n for k, n in parse_vm_stat(self.read("vm_stat")).items()}
-        free = memory_free_percent(self.read("kern.memorystatus_level"))
-        if free is not None:
-            v["vitals_mac_memory_free_percent"] = free
-        total, used = swap_usage(self.read("vm.swapusage"))
-        v["vitals_mac_swap_total_bytes"], v["vitals_mac_swap_used_bytes"] = total, used
-        state = self.thermal()
-        if state is not None:
-            v["vitals_mac_thermal_state"] = state
-        return v
-
+class _Exporter:
     def render(self) -> str:
         return "".join(f"{k} {v}\n" for k, v in self.values().items())
 
@@ -104,12 +98,94 @@ class Sysstat:
         return json.dumps(self.values())
 
 
+class MacHost(_Exporter):
+    def __init__(self, read=_mac_read, thermal=thermal_state):
+        self.read, self.thermal = read, thermal
+
+    def values(self) -> dict:
+        v = {f"vitals_host_{k}": n for k, n in parse_vm_stat(self.read("vm_stat")).items()}
+        free = memory_free_percent(self.read("kern.memorystatus_level"))
+        if free is not None:
+            v["vitals_host_memory_free_percent"] = free
+        total, used = swap_usage(self.read("vm.swapusage"))
+        v["vitals_host_swap_total_bytes"], v["vitals_host_swap_used_bytes"] = total, used
+        state = self.thermal()
+        if state is not None:
+            v["vitals_host_thermal_state"] = state
+        return v
+
+
+def _fields(text: str) -> dict:
+    """'Name:  123 kB' or 'name 123' lines as {name: int}."""
+    out = {}
+    for line in text.splitlines():
+        parts = line.replace(":", " ").split()
+        if len(parts) >= 2 and parts[1].isdigit():
+            out[parts[0]] = int(parts[1])
+    return out
+
+
+def _cpu_ticks(stat: str) -> tuple[int, int]:
+    """(busy, total) clock ticks from /proc/stat's first line: idle and iowait count as not busy."""
+    ticks = [int(x) for x in stat.splitlines()[0].split()[1:9]]
+    idle = ticks[3] + ticks[4]
+    return sum(ticks) - idle, sum(ticks)
+
+
+def cpu_temperature(hwmon: pathlib.Path):
+    """The hottest reading of the CPU's own sensors (not disks or GPUs), in °C, or None."""
+    temps = []
+    for d in sorted(hwmon.glob("hwmon*")):
+        name = d / "name"
+        if name.exists() and name.read_text().strip() in CPU_SENSORS:
+            temps += [int(t.read_text()) / 1000 for t in d.glob("temp*_input")]
+    return max(temps) if temps else None
+
+
+def _linux_read(path: str) -> str:
+    return pathlib.Path(path).read_text()
+
+
+class LinuxHost(_Exporter):
+    def __init__(self, read=_linux_read, hwmon=pathlib.Path("/sys/class/hwmon"), page_size=None):
+        self.read, self.hwmon = read, hwmon
+        self.page = page_size or os.sysconf("SC_PAGE_SIZE")
+        self.last_ticks = None
+
+    def values(self) -> dict:
+        mem, vm = _fields(self.read("/proc/meminfo")), _fields(self.read("/proc/vmstat"))
+        v = {
+            "vitals_host_swapped_in_bytes_total": vm.get("pswpin", 0) * self.page,
+            "vitals_host_swapped_out_bytes_total": vm.get("pswpout", 0) * self.page,
+            "vitals_host_paged_in_bytes_total": vm.get("pgpgin", 0) * 1024,  # pgpgin counts KiB, not pages
+            "vitals_host_paged_out_bytes_total": vm.get("pgpgout", 0) * 1024,
+            "vitals_host_swap_total_bytes": mem.get("SwapTotal", 0) * 1024,
+            "vitals_host_swap_used_bytes": (mem.get("SwapTotal", 0) - mem.get("SwapFree", 0)) * 1024,
+        }
+        if mem.get("MemTotal"):
+            v["vitals_host_memory_free_percent"] = round(100 * mem.get("MemAvailable", 0) / mem["MemTotal"])
+        busy, total = _cpu_ticks(self.read("/proc/stat"))
+        if self.last_ticks and total > self.last_ticks[1]:
+            v["vitals_host_cpu_busy_ratio"] = round(
+                (busy - self.last_ticks[0]) / (total - self.last_ticks[1]), 4
+            )
+        self.last_ticks = (busy, total)
+        temp = cpu_temperature(self.hwmon)
+        if temp is not None:
+            v["vitals_host_cpu_temp_celsius"] = temp
+        return v
+
+
+def host():
+    return MacHost() if sys.platform == "darwin" else LinuxHost()
+
+
 def main():
     from inference_vitals.metrics import serve
 
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, default=9092)
-    server = serve(Sysstat(), p.parse_args().port)
+    server = serve(host(), p.parse_args().port)
     try:
         while True:
             time.sleep(3600)
