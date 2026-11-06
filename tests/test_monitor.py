@@ -216,3 +216,12 @@ def test_folded_charts_never_overlap():
             assert not (mine & cells), (row["title"], p["title"])
             assert g["x"] + g["w"] <= 24
             cells |= mine
+
+
+def test_tiles_show_only_what_is_reporting_now_and_strips_keep_the_history():
+    panels = monitor.dashboard()["panels"]
+    for p in panels:
+        if p["type"] == "stat":  # a finished run drops off at once, so a tile rarely holds two models
+            assert all(t.get("instant") is True and t.get("range") is False for t in p["targets"]), p["title"]
+        if p["type"] == "timeseries":
+            assert not any(t.get("instant") for t in p["targets"]), p["title"]

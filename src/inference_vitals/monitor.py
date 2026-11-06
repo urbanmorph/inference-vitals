@@ -150,7 +150,7 @@ def _strip(tile: dict) -> dict:
     """A frameless line chart under a tile: the same numbers over time, no title, axes or legend."""
     g = tile["gridPos"]
     s = _panel("", [], tile["fieldConfig"]["defaults"]["unit"], g["x"], g["y"] + g["h"], g["w"], STRIP_H)
-    s["targets"] = [dict(t) for t in tile["targets"]]
+    s["targets"] = [{**t, "instant": False, "range": True} for t in tile["targets"]]  # the history
     s["transparent"] = True
     stepped = any(m["type"] == "value" for m in tile["fieldConfig"]["defaults"]["mappings"])
     # Quiet grey, so the eye goes to the number; Grafana cannot fade a graph drawn inside the tile itself.
@@ -184,6 +184,8 @@ def _stat(
         steps += [{"color": "orange", "value": warn}] if warn is not None else []
         steps += [{"color": "red", "value": bad}] if bad is not None else []
     p = _panel(title, [(expr, legend)], unit, x, y, w, TILE_H, "stat")
+    for t in p["targets"]:  # now, not "last value in the time range": a finished run drops off at once
+        t["instant"], t["range"] = True, False
     p["fieldConfig"]["defaults"]["thresholds"] = {"mode": "absolute", "steps": steps}
     # A tile with nothing to show yet reads "–" in the text colour, not "No data" in the alarm colour.
     p["fieldConfig"]["defaults"]["noValue"] = "–"
