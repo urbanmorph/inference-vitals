@@ -82,9 +82,33 @@ http_port = {GRAFANA}
 admin_password = {admin_password}
 disable_gravatar = true
 
+# View-only: the dashboard is rebuilt from monitor.py on every start, so nobody signs in to edit it.
+[auth]
+disable_login_form = true
+
+[auth.basic]
+enabled = false
+
 [auth.anonymous]
 enabled = true
 org_role = Viewer
+
+# Nothing leaves the Mac: no snapshot upload to snapshots.raintank.io, no public links (which would
+# point at 127.0.0.1 anyway), no plugin catalog, and none of the plugins Grafana otherwise downloads
+# from grafana.com in the background on every start (the dashboard uses only built-in panels).
+[snapshots]
+external_enabled = false
+
+[public_dashboards]
+enabled = false
+
+[plugins]
+plugin_admin_enabled = false
+preinstall_disabled = true
+
+# No alerts are set up, so the alert engine would only use CPU during a run.
+[unified_alerting]
+enabled = false
 
 [analytics]
 reporting_enabled = false
@@ -527,7 +551,9 @@ def _write(path: pathlib.Path, text: str, mode=0o644):
 
 def write_configs(state: pathlib.Path = STATE):
     secret = state / "grafana-admin-password"
-    if not secret.exists():  # used only when Grafana creates its database, on the first start
+    # Sign-in is off, but Grafana still creates an admin account on first start; a random password
+    # keeps it from being the default admin/admin if someone turns sign-in back on.
+    if not secret.exists():
         _write(secret, secrets.token_urlsafe(12) + "\n", 0o600)
     _write(state / "prometheus.yml", prometheus_config())
     _write(state / "grafana.ini", grafana_ini(state, secret.read_text().strip()), 0o600)
@@ -602,10 +628,7 @@ def start(state: pathlib.Path = STATE):
             f"{name}: {'started' if _ready(READY[name]) else 'NOT READY, see ' + str(state / 'logs' / (name + '.log'))}",
             flush=True,
         )
-    print(
-        f"\nDashboard: http://127.0.0.1:{GRAFANA}/d/inference-vitals  (to edit, sign in as admin; the password is in "
-        f"{state / 'grafana-admin-password'})"
-    )
+    print(f"\nDashboard: http://127.0.0.1:{GRAFANA}/d/inference-vitals  (view-only; change it in monitor.py)")
 
 
 def stop(state: pathlib.Path = STATE):

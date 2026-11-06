@@ -167,3 +167,22 @@ def test_every_tile_has_a_small_trend_strip_right_under_it():
 def test_panel_ids_the_screenshots_open_stay_put():
     by_id = {p["id"]: p["title"] for p in _all_panels(monitor.dashboard())}
     assert "memory" in by_id[31].lower() and "power" in by_id[37].lower()
+
+
+def _ini_sections(text):
+    import configparser
+
+    c = configparser.ConfigParser(interpolation=None)
+    c.read_string(text)
+    return c
+
+
+def test_grafana_is_view_only_and_nothing_can_be_sent_off_the_mac():
+    c = _ini_sections(monitor.grafana_ini(monitor.STATE, "pw"))
+    assert c["snapshots"]["external_enabled"] == "false"  # no upload to snapshots.raintank.io
+    assert c["public_dashboards"]["enabled"] == "false"  # no "share externally" links
+    assert c["auth"]["disable_login_form"] == "true" and c["auth.basic"]["enabled"] == "false"
+    assert c["plugins"]["plugin_admin_enabled"] == "false"  # no plugin catalog from grafana.com
+    assert c["plugins"]["preinstall_disabled"] == "true"  # no plugin downloads from grafana.com at start
+    assert c["unified_alerting"]["enabled"] == "false"  # no alert engine running with no alerts
+    assert c["auth.anonymous"]["enabled"] == "true" and c["auth.anonymous"]["org_role"] == "Viewer"

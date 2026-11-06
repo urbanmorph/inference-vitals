@@ -75,7 +75,7 @@ running) and waits until each one answers. `uv run inference-vitals status` show
 | macmon | `127.0.0.1:9091` | Chip numbers: CPU and GPU use, clock speeds, power, temperatures, fans. No `sudo`. |
 | Memory exporter | `127.0.0.1:9092` | Swap activity, memory pressure and swap in use, from `vm_stat` and `sysctl`. |
 | Prometheus | `127.0.0.1:9090` | Reads everything every 5 seconds and keeps 30 days of history. |
-| Grafana | `127.0.0.1:3000` | The dashboard. Open to view; sign in as `admin` to edit (the password is generated on first start and kept in `~/.local/state/inference-vitals/grafana-admin-password`). |
+| Grafana | `127.0.0.1:3000` | The dashboard, view-only. Sign-in is switched off (Grafana still shows the button); change the dashboard in `monitor.py` instead. |
 
 Nothing starts by itself at login; run `start` when you want to watch something.
 
@@ -171,7 +171,11 @@ per second.
 ## Privacy
 
 - Every service listens on `127.0.0.1`; nothing is reachable from the network.
-- Grafana's usage reporting, update checks, news feed and Gravatar are turned off.
+- Grafana's usage reporting, update checks, news feed and Gravatar are turned off, and so are the
+  ways it could send anything off the Mac: publishing snapshots to snapshots.raintank.io, public
+  ("share externally") links, the plugin catalog, and the plugins it otherwise downloads from
+  grafana.com on every start.
+- Grafana is view-only: sign-in is off, and its alert engine is off (no alerts are set up).
 - Only numbers are collected. Configuration, history and logs stay in `~/.local/state/inference-vitals`.
 
 ## What it cannot show
