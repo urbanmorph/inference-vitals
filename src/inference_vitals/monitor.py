@@ -121,7 +121,7 @@ THERMAL_NAMES = ["Nominal", "Fair", "Serious", "Critical"]
 def _stat(
     title, expr, unit, x, y, warn=None, bad=None, legend="{{model_name}}", low_is_bad=False, w=3, names=None
 ):
-    """A big number with a small trend line under it. Colours: amber at `warn` and red at `bad` (or, with
+    """A big number on its own; trends are in the chart below and the folded sections. Colours: amber at `warn` and red at `bad` (or, with
     low_is_bad, red below `bad` and amber below `warn`)."""
     if low_is_bad:
         steps = [
@@ -145,9 +145,9 @@ def _stat(
             {"type": "value", "options": {str(n): {"text": t, "index": n} for n, t in enumerate(names)}}
         )
     p["options"] = {
-        "graphMode": "area",
+        "graphMode": "none",
         "colorMode": "value",
-        "textMode": "value",
+        "textMode": "auto",
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
     }
     return p

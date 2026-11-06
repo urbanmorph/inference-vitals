@@ -21,7 +21,7 @@ listens on `127.0.0.1` only.
 
 ## What it shows
 
-**At a glance**, sixteen numbers with a trend line each, and one chart:
+**At a glance**, sixteen numbers and one chart:
 
 | The run | The Mac |
 | --- | --- |

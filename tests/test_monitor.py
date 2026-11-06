@@ -139,3 +139,11 @@ def test_the_thermal_tile_is_live_and_named():
         for v in range(4)
     }
     assert names == {"Nominal", "Fair", "Serious", "Critical"}
+
+
+def test_tiles_show_plain_numbers_with_no_graph_behind_them_and_name_each_model():
+    tiles = [p for p in monitor.dashboard()["panels"] if p.get("type") == "stat"]
+    assert len(tiles) == 16
+    for t in tiles:
+        assert t["options"]["graphMode"] == "none", t["title"]
+        assert t["options"]["textMode"] == "auto", t["title"]  # a name above each number when two models show
