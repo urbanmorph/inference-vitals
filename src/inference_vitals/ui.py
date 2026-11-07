@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 
 from inference_vitals import monitor
-from inference_vitals.monitor import CONTEXT, HW, LINUX, MAC, REPO, SWAP_RATE, TTFT_Q
+from inference_vitals.monitor import ACTIVE, CONTEXT, HW, LINUX, MAC, REPO, SWAP_RATE, TTFT_Q, idle_power
 
 PAGE = pathlib.Path(__file__).parent / "page"
 FILES = {
@@ -44,19 +44,18 @@ RANGES = [
     {"key": "24h", "label": "24 h", "seconds": 86400, "step": 60},
     {"key": "7d", "label": "7 d", "seconds": 604800, "step": 300},
 ]
-ACTIVE = "(max(vitals_current_phase) > bool 0)"  # 1 while a model is reading or writing, else 0
 
 
 def _energy(platform: str) -> dict:
     """Energy over the chosen range: all of it, and the model's share, which is the power above the
     machine's usual idle draw while a model is reading or writing. Idle draw is the 10th percentile of the
     last day's power, so it follows the screen and background apps. On Linux only the GPUs are metered."""
-    power = "max(macmon_sys_power_watts)" if platform == MAC else "sum(vitals_gpu_power_watts)"
+    power = HW[platform]["meter"]
     return {
         "meter": "whole Mac" if platform == MAC else "GPUs only",
         "power_query": power,
         "total_query": f"sum_over_time(({power})[{{range}}:{{step}}s]) * {{step}} / 3600",
-        "idle_query": f"quantile_over_time(0.1, ({power})[24h:1m])",
+        "idle_query": idle_power(power),
         "ai_query": f"sum_over_time((clamp_min({power} - {{base}}, 0) * {ACTIVE})[{{range}}:{{step}}s]) * {{step}} / 3600",
         "tokens_query": "sum(increase(vllm:generation_tokens_total[{range}]))",
     }

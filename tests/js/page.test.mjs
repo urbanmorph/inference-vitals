@@ -57,3 +57,9 @@ test("time left reads in hours and minutes", () => {
   assert.equal(page.duration(3900), "1 h 5 min");
   assert.equal(page.duration(null), "");
 });
+
+test("the clock shows local time with its time zone", () => {
+  const at = new Date(Date.UTC(2026, 10, 7, 17, 31, 5));
+  assert.equal(page.clockText(at, "en-IN", "Asia/Kolkata"), "23:01:05 IST");
+  assert.equal(page.clockText(at, "en-GB", "Europe/London"), "17:31:05 GMT");
+});

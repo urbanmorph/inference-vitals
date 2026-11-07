@@ -23,6 +23,7 @@ header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 18px; text-decoration: none; color: var(--text); }
 .brand b { color: var(--accent); font-weight: 600; }
 .spacer { flex: 1; }
+.clock { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; margin-right: 4px; }
 .pills { display: flex; background: var(--chip); border-radius: 8px; padding: 3px; }
 .pills button { border: 0; background: none; color: var(--muted); font: inherit; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
 .pills button.on { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--line); }

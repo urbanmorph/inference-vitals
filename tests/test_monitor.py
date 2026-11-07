@@ -403,3 +403,23 @@ def test_the_page_will_not_start_where_grafana_already_holds_the_port(tmp_path):
 def test_the_address_printed_matches_the_dashboard():
     assert monitor.dashboard_url(monitor.PAGE_UI) == "http://127.0.0.1:3000/"
     assert monitor.dashboard_url(monitor.GRAFANA_UI).endswith("/d/inference-vitals")
+
+
+@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+def test_energy_per_token_is_the_model_s_share_of_power_over_tokens_everywhere(platform):
+    q = monitor.HW[platform]["joules"]
+    meter = monitor.HW[platform]["meter"]
+    assert q.startswith(
+        f"sum(avg_over_time((clamp_min({meter} - scalar(quantile_over_time(0.1, ({meter})[24h:5m]))"
+    )
+    assert monitor.ACTIVE in q and "rate(vllm:generation_tokens_total[2m])" in q
+    titles = {p["title"]: p for row in monitor.dashboard(platform)["panels"] for p in row.get("panels", [])}
+    chart = titles["Energy per answer token (the model's share of power ÷ tokens, over 2 min)"]
+    assert chart["targets"][0]["expr"] == q
+    tile = next(p for p in monitor.dashboard(platform)["panels"] if p.get("title") == "Energy/token")
+    assert tile["targets"][0]["expr"] == q
+
+
+def test_the_whole_machine_is_metered_on_a_mac_and_the_gpus_on_linux():
+    assert monitor.HW[monitor.MAC]["meter"] == "max(macmon_sys_power_watts)"
+    assert monitor.HW[monitor.LINUX]["meter"] == "sum(vitals_gpu_power_watts)"

@@ -203,6 +203,14 @@ async function renderTiles() {
   }));
 }
 
+// ---- clock ----
+function clockText(date, locale, timeZone) {  // "23:01:05 IST": local time, with the zone every time is in
+  const parts = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    timeZone, timeZoneName: "short" }).formatToParts(date);
+  const get = (type) => (parts.find((p) => p.type === type) || {}).value || "";
+  return `${get("hour")}:${get("minute")}:${get("second")} ${get("timeZoneName")}`.trim();
+}
+
 // ---- running band and energy ----
 const state = { energy: null };
 function duration(s) {
@@ -396,11 +404,14 @@ async function main() {
   theme(); ranges(); rateBox(); buildSections();
   await refresh(true);
   setInterval(refresh, TILES_EVERY);
+  const tick = () => { $("clock").textContent = clockText(new Date()); };
+  tick();
+  setInterval(() => !document.hidden && tick(), 1000);
   document.addEventListener("visibilitychange", () => !document.hidden && refresh(true));
   let resize;
   addEventListener("resize", () => { clearTimeout(resize); resize = setTimeout(renderCharts, 200); });
 }
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
-  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration };
+  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText };
 }

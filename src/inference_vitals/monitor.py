@@ -245,7 +245,22 @@ TTFT_Q = (
     "histogram_quantile({q}, sum by (le, model_name) (rate(vllm:time_to_first_token_seconds_bucket[10m])))"
 )
 SLOWDOWN_NAMES = ["None", "Power cap", "Thermal", "Hardware"]  # gpustat.slowdown_state
-PER_TOKEN = " / (sum(rate(vllm:generation_tokens_total[2m])) > 0)"  # no data when idle
+# Energy: the model's share is the power above the machine's usual idle draw (the 10th percentile of the last
+# day's power, which follows the screen and background apps) while a model is reading or writing. Energy per
+# token is that share divided by the tokens written, here over a rolling 2 minutes; the page's band and tile
+# use the same split over the chosen range, so every energy figure agrees.
+ACTIVE = "(max(vitals_current_phase) > bool 0)"  # 1 while a model is reading or writing, else 0
+
+
+def idle_power(meter: str) -> str:
+    return f"quantile_over_time(0.1, ({meter})[24h:5m])"
+
+
+def ai_joules_per_token(meter: str) -> str:
+    share = f"clamp_min({meter} - scalar({idle_power(meter)}), 0) * {ACTIVE}"
+    return f"sum(avg_over_time(({share})[2m:15s]) / (sum(rate(vllm:generation_tokens_total[2m])) > 0))"
+
+
 # What each platform measures the machine with. The model half of the dashboard is the same everywhere.
 HW = {
     MAC: {
@@ -255,7 +270,8 @@ HW = {
         "gpu_mem_left": "min(vitals_gpu_memory_limit_bytes - vitals_peak_memory_bytes)",  # the tightest model
         "slowdown": ("Thermal", "max(vitals_host_thermal_state)", THERMAL_NAMES, 1, 2),
         "power": ("Mac power", "max(macmon_sys_power_watts)"),
-        "joules": "max(macmon_all_power_watts)" + PER_TOKEN,
+        "meter": "max(macmon_sys_power_watts)",  # the whole Mac
+        "joules": ai_joules_per_token("max(macmon_sys_power_watts)"),
     },
     LINUX: {
         "gpu_busy": "max(vitals_gpu_busy_ratio)",
@@ -263,8 +279,8 @@ HW = {
         "gpu_mem_left": "sum(vitals_gpu_memory_free_bytes)",
         "slowdown": ("GPU slowdown", "max(vitals_gpu_slowdown_state)", SLOWDOWN_NAMES, 2, 3),
         "power": ("GPU power", "sum(vitals_gpu_power_watts)"),
-        "joules": "sum(vitals_gpu_power_watts)"
-        + PER_TOKEN,  # the GPUs only: Linux has no whole-machine meter
+        "meter": "sum(vitals_gpu_power_watts)",  # the GPUs only: Linux has no whole-machine meter
+        "joules": ai_joules_per_token("sum(vitals_gpu_power_watts)"),
     },
 }
 SWAP_RATE = (
@@ -359,10 +375,9 @@ def _memory_panels(platform: str, m: str) -> list:
 
 def _hardware_panels(platform: str, m: str) -> list:
     energy = _panel(
-        "Energy per answer token (approx., includes reading the prompt)"
-        + (" — GPUs only" if platform == LINUX else ""),
+        "Energy per answer token (the model's share of power ÷ tokens, over 2 min)",
         [(HW[platform]["joules"], "joules per token")],
-        "none",
+        "suffix: J/tok",
         12,
         38,
     )
