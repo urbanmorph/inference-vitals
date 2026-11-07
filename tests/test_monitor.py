@@ -410,7 +410,7 @@ def test_energy_per_token_is_the_model_s_share_of_power_over_tokens_everywhere(p
     q = monitor.HW[platform]["joules"]
     meter = monitor.HW[platform]["meter"]
     assert q.startswith(
-        f"sum(avg_over_time((clamp_min({meter} - scalar(quantile_over_time(0.1, ({meter})[24h:5m]))"
+        f"sum(avg_over_time((clamp_min({meter} - scalar(quantile_over_time(0.1, ({meter})[24h:1m]))"
     )
     assert monitor.ACTIVE in q and "rate(vllm:generation_tokens_total[2m])" in q
     titles = {p["title"]: p for row in monitor.dashboard(platform)["panels"] for p in row.get("panels", [])}

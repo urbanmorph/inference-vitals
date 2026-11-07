@@ -26,6 +26,27 @@ Linux, a small exporter that reads `nvidia-smi`), a small exporter for memory, t
 library, with no dependencies beyond Python itself. Everything runs on your machine and listens on
 `127.0.0.1` only; the page loads nothing from the internet.
 
+## Quick start
+
+On an Apple Silicon Mac with [Homebrew](https://brew.sh):
+
+```sh
+brew install uv prometheus macmon
+git clone https://github.com/urbanmorph/inference-vitals.git && cd inference-vitals
+uv run inference-vitals start
+open http://127.0.0.1:3000
+```
+
+The machine's numbers appear straight away. For the model's, put the proxy in front of your engine
+(`uv run inference-vitals proxy --to http://127.0.0.1:11434` for Ollama) and point your app at
+`http://127.0.0.1:8401`; see [Getting the model's numbers on it](#getting-the-models-numbers-on-it).
+Linux with NVIDIA: see [below](#linux-with-nvidia-gpus-experimental).
+
+**Contents:** [What it shows](#what-it-shows) · [Install](#install) · [Commands](#commands) ·
+[Getting the model's numbers on it](#getting-the-models-numbers-on-it) · [Run conditions](#run-conditions) ·
+[Overhead](#overhead) · [Privacy](#privacy) · [What it cannot show](#what-it-cannot-show) ·
+[Troubleshooting](#troubleshooting) · [Uninstall](#uninstall) · [Contributing](#contributing)
+
 ## What it shows
 
 **At a glance**: a **Running** band naming each model that is reporting, what it is doing (Idle,
@@ -82,7 +103,8 @@ links back here.
 
 ## Install
 
-You need an Apple Silicon Mac (M1 or later) with [Homebrew](https://brew.sh).
+You need an Apple Silicon Mac (M1 or later) with [Homebrew](https://brew.sh). [uv](https://docs.astral.sh/uv/)
+brings the Python it needs (3.11 or later); nothing is installed into your system Python.
 
 ```sh
 brew install uv prometheus macmon
@@ -109,11 +131,25 @@ Nothing starts by itself at login; run `start` when you want to watch something.
 `uv run inference-vitals start --ui grafana`. The same dashboard opens at
 `http://127.0.0.1:3000/d/inference-vitals`, view-only, with sign-in, sharing, plugins and alerting off.
 
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `uv run inference-vitals start` | Start the exporters, Prometheus and the page (each only if not running) |
+| `uv run inference-vitals start --ui grafana` | The same, with Grafana in place of the page |
+| `uv run inference-vitals status` | What is running, and whether each one answers |
+| `uv run inference-vitals stop` | Stop everything `start` started |
+| `uv run inference-vitals proxy --to URL` | Measure an engine's requests on their way through (port 8401) |
+
+The page's address takes a few options, handy for bookmarks: `?range=` (`15m`, `1h`, `6h`, `24h`, `7d`),
+`?theme=` (`light`, `dark`) and `?open=` (sections to show opened, e.g. `?open=memory,hardware`).
+
 ### Linux with NVIDIA GPUs (experimental)
 
-Tested against recorded `nvidia-smi` and `/proc` output, and started end to end in a Debian container
-with a stand-in `nvidia-smi` (every service answers and every dashboard query runs), but not yet on real
-NVIDIA hardware: if you run it, please open an issue with what you see. You need the NVIDIA driver (which brings
+Tested against recorded `nvidia-smi` and `/proc` output, and run end to end in a Debian container with a
+stand-in `nvidia-smi` playing two GPUs and a pretend model run: every service started, all 70 of the
+page's queries ran without an error, and the page drew in a browser with each GPU on its own line. It
+has not run on real NVIDIA hardware yet: if you run it, please open an issue with what you see. You need the NVIDIA driver (which brings
 `nvidia-smi`), [uv](https://docs.astral.sh/uv/) and Prometheus (Grafana only for `--ui grafana`):
 
 ```sh
@@ -217,11 +253,12 @@ a slow run on a hot or busy Mac then explains itself. Spotlight indexing and Pho
 
 ## Overhead
 
-The four services take a few hundred MB of memory between them and very little CPU. An open dashboard
-tab also redraws its charts every 10 seconds. That is small next to a model, but for a run where speed
-matters, close the tab: Prometheus keeps recording, and you can look at the whole run afterwards. To
-measure the difference on your Mac, run the same work with the tab open and closed and compare tokens
-per second.
+The services take a few hundred MB of memory between them (Prometheus most of it; more with Grafana)
+and very little CPU. An open page refreshes its tiles every 5 seconds, its charts every 30 and its
+energy figures every minute, and does nothing while its tab is hidden. That is small next to a model,
+but for a run where speed matters, close the tab or switch away: Prometheus keeps recording, and you can
+look at the whole run afterwards. To measure the difference on your machine, run the same work with the
+tab open and closed and compare tokens per second.
 
 ## Privacy
 
@@ -245,6 +282,19 @@ per second.
 - **On Linux:** whole-machine power (only the GPUs' own power is reported; the CPU's needs root), AMD
   and Intel GPUs, and Windows.
 
+## Troubleshooting
+
+- **`prometheus: not found (brew install prometheus)`** (or macmon, or grafana): install what it names.
+- **`<name>: NOT READY, see ~/.local/state/inference-vitals/logs/<name>.log`**: the log says why. The
+  usual cause is a port already taken, often by a copy started with `brew services`; stop that one
+  (`brew services stop prometheus`) and run `start` again.
+- **`grafana is running on port 3000: run inference-vitals stop first`** (or `page is running…`): the
+  other dashboard holds the port. `stop`, then `start` with the one you want.
+- **The run's tiles stay empty and the band says "Nothing reporting"**: no model is reporting to
+  `127.0.0.1:8400`. Use the proxy or the library (above), and make sure only one of them runs.
+- **Some machine tiles stay empty on Linux**: GPU numbers need `nvidia-smi`; CPU temperature needs a
+  `coretemp` or `k10temp` sensor, which virtual machines usually lack.
+
 ## Uninstall
 
 ```sh
@@ -253,11 +303,17 @@ rm -rf ~/.local/state/inference-vitals
 brew uninstall prometheus macmon   # on a Mac, if nothing else uses them (and grafana, if you added it)
 ```
 
+## Contributing
+
+Issues and pull requests are welcome, and reports from Linux with real NVIDIA GPUs especially. For a pull
+request: write the test first, keep the dashboard description in `ui.py` and `monitor.py` (not edited
+by hand in Grafana), and run the checks below before sending it.
+
 ## Development
 
 ```sh
-uv run pytest        # tests (the page's JavaScript too, with Node), including one that checks every
-                     # chart on the page and in Grafana uses a metric that exists
+uv run pytest        # tests, including one that checks every chart on the page and in Grafana uses a
+                     # metric that exists; the page's JavaScript is tested too when Node is installed
 uv run ruff check .
 sh docs/take-screenshots.sh   # re-take the screenshots from a running dashboard (needs Google Chrome)
 ```

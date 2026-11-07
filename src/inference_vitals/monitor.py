@@ -253,7 +253,9 @@ ACTIVE = "(max(vitals_current_phase) > bool 0)"  # 1 while a model is reading or
 
 
 def idle_power(meter: str) -> str:
-    return f"quantile_over_time(0.1, ({meter})[24h:5m])"
+    """Sampled every minute, so a fresh install has a baseline within a minute (every 5 left it empty for
+    up to 5 minutes, and with it the model's share of energy)."""
+    return f"quantile_over_time(0.1, ({meter})[24h:1m])"
 
 
 def ai_joules_per_token(meter: str) -> str:
