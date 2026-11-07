@@ -111,7 +111,7 @@ def test_everything_listens_on_localhost_only():
 
 
 def test_on_linux_the_nvidia_exporter_takes_macmon_s_place():
-    cmds = monitor.commands(monitor.STATE, monitor.LINUX, TOOLS)
+    cmds = monitor.commands(monitor.STATE, monitor.LINUX, TOOLS, ui=monitor.GRAFANA_UI)
     assert "macmon" not in cmds and cmds["gpustat"][-2:] == ["--port", "9091"]
     assert cmds["prometheus"][0] == "/usr/bin/prometheus"
     assert (
@@ -136,7 +136,9 @@ def test_tools_are_found_on_the_path_and_grafana_s_home_beside_it(tmp_path):
 
 
 def test_an_older_grafana_server_binary_takes_no_server_word():
-    cmds = monitor.commands(monitor.STATE, monitor.LINUX, {**TOOLS, "grafana": "/usr/sbin/grafana-server"})
+    cmds = monitor.commands(
+        monitor.STATE, monitor.LINUX, {**TOOLS, "grafana": "/usr/sbin/grafana-server"}, ui=monitor.GRAFANA_UI
+    )
     assert cmds["grafana"][1].startswith("--homepath=")
 
 
@@ -302,7 +304,9 @@ def test_missing_tools_are_named_with_how_to_install_them():
     assert monitor.missing_tools(monitor.MAC, TOOLS) == []
     gone = monitor.missing_tools(monitor.MAC, {**TOOLS, "macmon": None, "prometheus": None})
     assert any("macmon" in g and "brew install" in g for g in gone) and any("prometheus" in g for g in gone)
-    linux = monitor.missing_tools(monitor.LINUX, {**TOOLS, "grafana": None, "grafana_home": None})
+    linux = monitor.missing_tools(
+        monitor.LINUX, {**TOOLS, "grafana": None, "grafana_home": None}, monitor.GRAFANA_UI
+    )
     assert any("grafana" in g and "README" in g for g in linux)
     assert monitor.missing_tools(monitor.LINUX, {**TOOLS, "macmon": None}) == []  # not needed on Linux
 
@@ -360,3 +364,42 @@ def test_the_dashboard_links_to_the_repository():
             "tags": [],
         }
     ]
+
+
+def test_the_page_is_the_default_and_grafana_is_optional():
+    page = monitor.commands(monitor.STATE, monitor.MAC, TOOLS)
+    assert "grafana" not in page
+    assert page["page"][1:] == ["-m", "inference_vitals.ui", "--port", "3000", "--platform", "mac"]
+    grafana = monitor.commands(monitor.STATE, monitor.MAC, TOOLS, ui=monitor.GRAFANA_UI)
+    assert "page" not in grafana and grafana["grafana"][0] == TOOLS["grafana"]
+
+
+def test_grafana_is_only_needed_when_asked_for():
+    no_grafana = {**TOOLS, "grafana": None, "grafana_home": None}
+    assert monitor.missing_tools(monitor.MAC, no_grafana) == []
+    assert any("grafana" in m for m in monitor.missing_tools(monitor.MAC, no_grafana, monitor.GRAFANA_UI))
+
+
+def test_start_takes_ui_grafana_and_nothing_else():
+    assert monitor.chosen_ui([]) == monitor.PAGE_UI
+    assert monitor.chosen_ui(["--ui", "grafana"]) == monitor.GRAFANA_UI
+    with pytest.raises(SystemExit):
+        monitor.chosen_ui(["--ui", "kibana"])
+
+
+def test_stop_and_status_cover_whichever_dashboard_runs():
+    assert {"page", "grafana"} <= set(monitor._names(monitor.MAC))
+
+
+def test_the_page_will_not_start_where_grafana_already_holds_the_port(tmp_path):
+    import os
+
+    (tmp_path / "pids").mkdir()
+    (tmp_path / "pids" / "grafana").write_text(str(os.getpid()))  # a process that is certainly running
+    assert "inference-vitals stop" in monitor.ui_conflict(tmp_path, monitor.PAGE_UI)
+    assert monitor.ui_conflict(tmp_path, monitor.GRAFANA_UI) is None
+
+
+def test_the_address_printed_matches_the_dashboard():
+    assert monitor.dashboard_url(monitor.PAGE_UI) == "http://127.0.0.1:3000/"
+    assert monitor.dashboard_url(monitor.GRAFANA_UI).endswith("/d/inference-vitals")

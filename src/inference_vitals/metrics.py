@@ -106,7 +106,9 @@ class Metrics:
         prompt's size if known."""
         with self.lock:
             self.phase, self.now_tokens, self.now_prompt = WRITING, tokens, prompt_tokens
-            self.now_tps = round(tokens / writing_seconds, 1) if writing_seconds > 0 else 0.0
+            # over at least a second: the first tokens arrive within milliseconds, which would read as
+            # hundreds of thousands of tokens a second
+            self.now_tps = round(tokens / max(writing_seconds, 1.0), 1)
 
     def _observe(self, name, value):
         h = self.hist[name]

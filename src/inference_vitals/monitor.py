@@ -1,6 +1,7 @@
 """inference-vitals: a dashboard for running AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs.
 
-  inference-vitals start     start the chip and memory exporters, Prometheus and Grafana (each only if not running)
+  inference-vitals start     start the chip and memory exporters, Prometheus and the dashboard page
+                             (each only if not running); --ui grafana for Grafana instead of the page
   inference-vitals status
   inference-vitals stop
   inference-vitals proxy --to http://127.0.0.1:11434    watch an engine (Ollama here); see proxy.py
@@ -28,8 +29,9 @@ REPO = "https://github.com/urbanmorph/inference-vitals"
 BREW = pathlib.Path("/opt/homebrew")
 DATASOURCE_UID = "local-prom"
 # CHIP is macmon on a Mac and the NVIDIA exporter (gpustat) on Linux; SYSSTAT is memory (and Linux CPU).
-RUNNER, CHIP, SYSSTAT, PROMETHEUS, GRAFANA = DEFAULT_PORT, 9091, 9092, 9090, 3000
+RUNNER, CHIP, SYSSTAT, PROMETHEUS, DASHBOARD = DEFAULT_PORT, 9091, 9092, 9090, 3000  # page or Grafana
 MAC, LINUX = "mac", "linux"
+PAGE_UI, GRAFANA_UI = "page", "grafana"  # the dashboard: our own page (default) or Grafana
 PLATFORMS = (MAC, LINUX)
 GRAFANA_HOMES = [  # where packages put Grafana's own files (its "homepath")
     BREW / "opt/grafana/share/grafana",
@@ -86,7 +88,7 @@ provisioning = {state}/provisioning
 
 [server]
 http_addr = 127.0.0.1
-http_port = {GRAFANA}
+http_port = {DASHBOARD}
 
 [security]
 admin_password = {admin_password}
@@ -699,9 +701,8 @@ def find_tools(platform: str, path: str | None = None, homes: list | None = None
     }
 
 
-def commands(state: pathlib.Path, platform: str = MAC, tools: dict | None = None) -> dict:
+def commands(state: pathlib.Path, platform: str = MAC, tools: dict | None = None, ui: str = PAGE_UI) -> dict:
     t = tools or find_tools(platform)
-    grafana = [t["grafana"]] + ([] if str(t["grafana"]).endswith("grafana-server") else ["server"])
     cmds = {}
     if platform == MAC:
         cmds["macmon"] = [t["macmon"], "serve", "--host", "127.0.0.1", "--port", str(CHIP)]
@@ -715,7 +716,19 @@ def commands(state: pathlib.Path, platform: str = MAC, tools: dict | None = None
         "--storage.tsdb.retention.time=30d",
         f"--web.listen-address=127.0.0.1:{PROMETHEUS}",
     ]
-    cmds["grafana"] = [*grafana, f"--homepath={t['grafana_home']}", f"--config={state}/grafana.ini"]
+    if ui == GRAFANA_UI:
+        grafana = [t["grafana"]] + ([] if str(t["grafana"]).endswith("grafana-server") else ["server"])
+        cmds["grafana"] = [*grafana, f"--homepath={t['grafana_home']}", f"--config={state}/grafana.ini"]
+    else:
+        cmds["page"] = [
+            sys.executable,
+            "-m",
+            "inference_vitals.ui",
+            "--port",
+            str(DASHBOARD),
+            "--platform",
+            platform,
+        ]
     return cmds
 
 
@@ -724,7 +737,8 @@ READY = {
     "gpustat": f"http://127.0.0.1:{CHIP}/metrics",
     "sysstat": f"http://127.0.0.1:{SYSSTAT}/metrics",
     "prometheus": f"http://127.0.0.1:{PROMETHEUS}/-/ready",
-    "grafana": f"http://127.0.0.1:{GRAFANA}/api/health",
+    "grafana": f"http://127.0.0.1:{DASHBOARD}/api/health",
+    "page": f"http://127.0.0.1:{DASHBOARD}/api/spec",
 }
 
 
@@ -789,32 +803,57 @@ def _ready(url):
         return False
 
 
-def missing_tools(platform: str, tools: dict) -> list[str]:
+def missing_tools(platform: str, tools: dict, ui: str = PAGE_UI) -> list[str]:
     """One line per program `start` needs and cannot find, saying how to get it."""
     how = "brew install" if platform == MAC else "see the README's Linux section"
-    needed = ["prometheus", "grafana"] + (["macmon"] if platform == MAC else [])
+    needed = (
+        ["prometheus"] + (["grafana"] if ui == GRAFANA_UI else []) + (["macmon"] if platform == MAC else [])
+    )
     out = [
         f"{name}: not found ({how} {name})" if platform == MAC else f"{name}: not found ({how})"
         for name in needed
         if not tools.get(name)
     ]
-    if tools.get("grafana") and not tools.get("grafana_home"):
+    if ui == GRAFANA_UI and tools.get("grafana") and not tools.get("grafana_home"):
         out.append("grafana: its home folder (with conf/) was not found beside it or in the usual places")
     return out
 
 
-def start(state: pathlib.Path = STATE):
+def chosen_ui(args: list[str]) -> str:
+    """`start` takes `--ui grafana` to use Grafana instead of the page."""
+    if not args:
+        return PAGE_UI
+    if args[:1] == ["--ui"] and args[1:] in ([PAGE_UI], [GRAFANA_UI]):
+        return args[1]
+    sys.exit(f"usage: inference-vitals start [--ui {GRAFANA_UI}]")
+
+
+def ui_conflict(state: pathlib.Path, ui: str):
+    """Why this dashboard cannot start (the other one holds its port), or None."""
+    other = GRAFANA_UI if ui == PAGE_UI else PAGE_UI
+    if _pid(state, other):
+        return f"{other} is running on port {DASHBOARD}: run `inference-vitals stop` first, then start again"
+    return None
+
+
+def dashboard_url(ui: str) -> str:
+    return f"http://127.0.0.1:{DASHBOARD}/" + ("d/inference-vitals" if ui == GRAFANA_UI else "")
+
+
+def start(state: pathlib.Path = STATE, ui: str = PAGE_UI):
     platform = detect_platform()
     tools = find_tools(platform)
-    if missing := missing_tools(platform, tools):
+    if missing := missing_tools(platform, tools, ui):
         sys.exit("\n".join(missing))
+    if conflict := ui_conflict(state, ui):
+        sys.exit(conflict)
     if platform == LINUX and not tools["nvidia"]:
         print(
             "nvidia-smi not found: GPU numbers stay empty (the model and memory numbers still work)",
             flush=True,
         )
     write_configs(state, platform)
-    for name, cmd in commands(state, platform, tools).items():
+    for name, cmd in commands(state, platform, tools, ui).items():
         if _pid(state, name):
             print(f"{name}: already running", flush=True)
             continue
@@ -836,12 +875,12 @@ def start(state: pathlib.Path = STATE):
             f"{name}: {'started' if _ready(READY[name]) else 'NOT READY, see ' + str(state / 'logs' / (name + '.log'))}",
             flush=True,
         )
-    print(f"\nDashboard: http://127.0.0.1:{GRAFANA}/d/inference-vitals  (view-only; change it in monitor.py)")
+    print(f"\nDashboard: {dashboard_url(ui)}  (view-only; change it in monitor.py)")
 
 
 def _names(platform: str) -> list[str]:
     chip = "macmon" if platform == MAC else "gpustat"
-    return [chip, "sysstat", "prometheus", "grafana"]
+    return [chip, "sysstat", "prometheus", PAGE_UI, GRAFANA_UI]
 
 
 def stop(state: pathlib.Path = STATE):
@@ -868,4 +907,6 @@ def main():
         return proxy.main(sys.argv[2:])
     if action not in ("start", "stop", "status"):
         sys.exit(__doc__)
-    {"start": start, "stop": stop, "status": status}[action]()
+    if action == "start":
+        return start(ui=chosen_ui(sys.argv[2:]))
+    {"stop": stop, "status": status}[action]()

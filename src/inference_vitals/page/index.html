@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>inference-vitals</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/page.css">
+</head>
+<body>
+<main>
+  <header>
+    <a class="brand" id="repo" title="inference-vitals on GitHub" target="_blank" rel="noopener">
+      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <g stroke="var(--faint)" stroke-width="3.5"><rect x="10" y="10" width="44" height="44" rx="9"/>
+        <path d="M24 4v6M32 4v6M40 4v6M24 54v6M32 54v6M40 54v6M4 24h6M4 32h6M4 40h6M54 24h6M54 32h6M54 40h6"/></g>
+        <polyline stroke="#73BF69" stroke-width="4" points="15,34 23,34 27,25 31,43 35,19 39,37 42,32 49,32"/></g></svg>
+      <span>inference<b>-</b>vitals</span>
+    </a>
+    <span class="spacer"></span>
+    <div class="pills" role="group" aria-label="Time range" id="ranges"></div>
+    <button class="icon" id="theme" title="Light or dark" aria-label="Switch light or dark">◐</button>
+  </header>
+
+  <section class="running" aria-label="Running">
+    <span class="label">Running</span>
+    <span id="models" class="models"></span>
+    <span class="run-meta" id="run-meta"></span>
+    <div class="energy">
+      <div class="kwh"><span id="energy">–</span> <small id="energy-label"></small></div>
+      <div class="ai" id="energy-ai"></div>
+      <div class="cost" id="cost"></div>
+      <div class="rate" id="rate-box">rate per kWh (unit)
+        <select id="currency"><option>₹</option><option>$</option><option>€</option><option>£</option></select>
+        <input id="rate" type="number" min="0" step="0.01" placeholder="8.50" aria-label="Electricity rate per kWh">
+        <span title="Use the per-unit rate on your electricity bill. Indian domestic tariffs are tiered, often ₹5-9 a unit depending on how much the home uses. Kept in this browser only.">ⓘ</span>
+      </div>
+    </div>
+  </section>
+
+  <h2>The run</h2>
+  <div class="tiles" id="run"></div>
+  <h2>The machine</h2>
+  <div class="tiles" id="machine"></div>
+
+  <div class="chart" id="main"></div>
+  <div id="sections"></div>
+
+  <footer>
+    <span>Everything stays on this machine: numbers only, on 127.0.0.1.</span>
+    <span id="updated"></span>
+    <a id="repo-link" target="_blank" rel="noopener"></a>
+  </footer>
+</main>
+<script src="/page.js"></script>
+</body>
+</html>

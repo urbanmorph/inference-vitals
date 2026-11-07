@@ -1,11 +1,11 @@
 #!/bin/sh
-# Re-take the README screenshots from a running dashboard (inference-vitals start, with a model working).
+# Re-take the README screenshots from the running page (inference-vitals start, with a model working).
 # Uses Google Chrome's headless mode with a throwaway profile, so your own Chrome is not touched.
 set -eu
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 OUT="$(cd "$(dirname "$0")" && pwd)/screenshots"
 PROFILE="$(mktemp -d)"
-URL="http://127.0.0.1:3000/d/inference-vitals?orgId=1&from=${FROM:-now-30m}&to=${TO:-now}&kiosk"  # FROM/TO: Grafana times, e.g. epoch ms
+URL="http://127.0.0.1:3000/?range=${RANGE:-15m}"  # the page; it also takes ?theme= and ?open= (sections opened)
 mkdir -p "$OUT"
 
 shot() { # name, url, width, height
@@ -14,8 +14,9 @@ shot() { # name, url, width, height
   echo "$OUT/$1.png"
 }
 
-shot at-a-glance-dark "$URL&theme=dark" 1512 900
-shot at-a-glance-light "$URL&theme=light" 1512 900
-shot memory "$URL&theme=dark&viewPanel=31" 1200 600
-shot power "$URL&theme=dark&viewPanel=37" 1200 600
+shot warm-up "$URL" 800 600 && rm -f "$OUT/warm-up.png"  # a first load in a fresh profile can come back empty
+shot at-a-glance-dark "$URL&theme=dark" 1512 980
+shot at-a-glance-light "$URL&theme=light" 1512 980
+shot memory "$URL&theme=dark&open=memory" 1512 1700
+shot power "$URL&theme=dark&open=hardware" 1512 2100
 rm -rf "$PROFILE"

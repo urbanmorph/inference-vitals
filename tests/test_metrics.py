@@ -187,3 +187,12 @@ def test_tokens_count_as_they_are_written_not_only_when_the_page_ends():
     m.progress(tokens=10, writing_seconds=1.0)
     m.finished({**_record(1, 1.0), "generation_tokens": 9})  # never counts down
     assert "vllm:generation_tokens_total 3011" in m.render()
+
+
+def test_the_first_tokens_cannot_report_an_absurd_speed():
+    m = metrics.Metrics(total=1, kv_per_token=0)
+    m.started({"id": "p1"})
+    m.progress(tokens=3, writing_seconds=0.002)  # the first tokens arrive within milliseconds
+    assert "vitals_current_generation_tps 3.0" in m.render()  # counted over at least a second
+    m.progress(tokens=40, writing_seconds=2.5)
+    assert "vitals_current_generation_tps 16.0" in m.render()
