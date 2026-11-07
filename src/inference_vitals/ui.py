@@ -94,7 +94,7 @@ def _tiles(platform: str) -> dict:
         {"title": "Invalid answers", "kind": "ratio", "query": "sum(vitals_answers_invalid_total)",
          "of_query": "sum(vitals_pages_done)", "warn": 1, "bad": 5},
         {"title": "Cold start TTFT", "kind": "plain", "unit": "s", "query": "max(vitals_cold_ttft_s)",
-         "note": "first answer after loading"},
+         "note": "after loading"},
     ]  # fmt: skip
     machine = [
         {"title": "GPU mem left", "kind": "split", "unit": "bytes", "query": hw["gpu_mem_left"], **mem,

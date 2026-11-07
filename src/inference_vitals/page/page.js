@@ -186,7 +186,7 @@ async function renderTile(t) {
     }
     case "energy-per-token": {
       const e = state.energy, jt = e && e.ai !== null && e.tokens ? (e.ai * 3600) / e.tokens : null;
-      return head(t.title, jt, t.unit, "plain") + sub(jt === null ? "AI energy ÷ tokens, in range" : `AI energy ÷ ${Math.round(e.tokens).toLocaleString()} tokens`);
+      return head(t.title, jt, t.unit, "plain") + sub(jt === null ? "AI energy ÷ tokens" : `over ${text(e.tokens, "none")} tokens`);
     }
     default:
       return head(t.title, v, t.unit, "plain") + sub(t.note);
