@@ -24,6 +24,7 @@ import urllib.request
 from inference_vitals.metrics import DEFAULT_PORT
 
 STATE = pathlib.Path.home() / ".local/state/inference-vitals"
+REPO = "https://github.com/urbanmorph/inference-vitals"
 BREW = pathlib.Path("/opt/homebrew")
 DATASOURCE_UID = "local-prom"
 # CHIP is macmon on a Mac and the NVIDIA exporter (gpustat) on Linux; SYSSTAT is memory (and Linux CPU).
@@ -648,6 +649,20 @@ def dashboard(platform: str = MAC) -> dict:
     return {
         "uid": "inference-vitals",
         "title": "Inference Vitals",
+        "links": [
+            {
+                "title": "inference-vitals on GitHub",
+                "type": "link",
+                "url": REPO,
+                "icon": "external link",
+                "targetBlank": True,
+                "tooltip": "Source, setup and what each number means",
+                "asDropdown": False,
+                "includeVars": False,
+                "keepTime": False,
+                "tags": [],
+            }
+        ],
         "schemaVersion": 39,
         "version": 3,
         "editable": True,

@@ -342,3 +342,21 @@ def test_a_band_above_the_tiles_names_each_running_model_and_its_phase():
     assert min(p["gridPos"]["y"] for p in tiles) >= 1 + band["gridPos"]["h"]  # tiles start below it
     strips = [p for p in panels if p.get("title") == "" and p["gridPos"]["w"] == 24]
     assert not strips  # no trend strip under the band
+
+
+def test_the_dashboard_links_to_the_repository():
+    links = monitor.dashboard()["links"]
+    assert links == [
+        {
+            "title": "inference-vitals on GitHub",
+            "type": "link",
+            "url": "https://github.com/urbanmorph/inference-vitals",
+            "icon": "external link",
+            "targetBlank": True,
+            "tooltip": "Source, setup and what each number means",
+            "asDropdown": False,
+            "includeVars": False,
+            "keepTime": False,
+            "tags": [],
+        }
+    ]

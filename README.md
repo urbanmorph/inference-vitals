@@ -1,4 +1,9 @@
-# inference-vitals
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-dark.svg">
+    <img alt="inference-vitals" src="docs/brand/logo-light.svg" height="48">
+  </picture>
+</h1>
 
 **One screen for running AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs (experimental):
 how fast the model is, how close it is to running out of memory, and how hot the machine is getting, on
@@ -59,7 +64,7 @@ Below that, four sections stay folded until you open them:
 | --- | --- |
 | ![Model memory against the GPU limit](docs/screenshots/memory.png) | ![GPU, CPU, Neural Engine and whole-Mac power](docs/screenshots/power.png) |
 
-There is a light theme too: add `&theme=light` to the address.
+There is a light theme too: add `&theme=light` to the address. The link in the top bar comes back here.
 
 ![The same view in the light theme](docs/screenshots/at-a-glance-light.png)
 
