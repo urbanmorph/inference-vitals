@@ -32,6 +32,8 @@ Model runs and fine-tunes report on `127.0.0.1:8400`, which Prometheus also read
 **Prefer Grafana?** `brew install grafana`, then `uv run inference-vitals stop` and
 `uv run inference-vitals start --ui grafana`. The same dashboard opens at
 `http://127.0.0.1:3000/d/inference-vitals`, view-only, with sign-in, sharing, plugins and alerting off.
+Grafana has no training mode: a fine-tune shows in its own folded **Training** row, while the band and
+tiles at the top stay those of a model run.
 
 ## Commands
 
@@ -47,10 +49,11 @@ Model runs and fine-tunes report on `127.0.0.1:8400`, which Prometheus also read
 
 ## On Linux with NVIDIA GPUs (experimental)
 
-Tested against recorded `nvidia-smi` and `/proc` output, and run end to end in a Debian container with a
-stand-in `nvidia-smi` playing two GPUs and a pretend model run: every service started, all of the page's
-queries ran without an error, and the page drew in a browser with each GPU on its own line. It has not run
-on real NVIDIA hardware yet: if you run it, please open an issue with what you see. You need the NVIDIA
+Tested against recorded `nvidia-smi`, `/proc` and `/sys` output, and run end to end in a Debian container
+(Debian's own Prometheus 2.42) with a stand-in `nvidia-smi` playing two GPUs, a made-up laptop battery and
+a fine-tune followed with `train`: every service started, all 105 of the page's queries ran without an
+error, and the page drew in a browser in training mode with the battery chip. It has not run on real
+NVIDIA hardware yet: if you run it, please open an issue with what you see. You need the NVIDIA
 driver (which brings `nvidia-smi`), [uv](https://docs.astral.sh/uv/) and Prometheus (Grafana only for
 `--ui grafana`):
 

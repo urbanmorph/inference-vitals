@@ -56,6 +56,9 @@ test("time left reads in hours and minutes", () => {
   assert.equal(page.duration(1680), "28 min");
   assert.equal(page.duration(3900), "1 h 5 min");
   assert.equal(page.duration(null), "");
+  assert.equal(page.duration(20), "under a minute");  // not "0 min"
+  assert.equal(page.leftText(20), "under a minute left");
+  assert.equal(page.leftText(1680), "about 28 min left");
 });
 
 test("the clock shows local time with its time zone", () => {
@@ -82,6 +85,7 @@ test("the battery chip shows only on battery, with the time left at this load", 
   assert.equal(short.warn, true);
   assert.equal(short.text, "🔋 18% · ~6 min at this load (the run needs ~9 min)");
   assert.equal(batteryText({ percent: 64, wh: 49.6, draw: 24.8, onPower: 0 }, 600).warn, false);
+  assert.equal(batteryText({ percent: 2, wh: 0.1, draw: 20, onPower: 0 }, null).text, "🔋 2% · under a minute at this load");
 });
 
 test("a learning rate and other tiny numbers keep their digits", () => {

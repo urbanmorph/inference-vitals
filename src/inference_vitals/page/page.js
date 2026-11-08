@@ -232,7 +232,7 @@ function batteryText(b, left) {  // only on battery: charge, and the time left a
   if (!b.draw || !b.wh) return { hidden: false, text: `🔋 ${Math.round(b.percent)}%`, warn: false };
   const secs = (b.wh / b.draw) * 3600, warn = left !== null && left !== undefined && secs < left;
   return { hidden: false, warn,
-    text: `🔋 ${Math.round(b.percent)}% · ~${duration(secs)} at this load${warn ? ` (the run needs ~${duration(left)})` : ""}` };
+    text: `🔋 ${Math.round(b.percent)}% · ${secs < 30 ? "" : "~"}${duration(secs)} at this load${warn ? ` (the run needs ~${duration(left)})` : ""}` };
 }
 async function renderBattery() {
   const q = SPEC.battery;
@@ -247,6 +247,7 @@ async function renderBattery() {
 function duration(s) {
   if (s === null || !Number.isFinite(s)) return "";
   const m = Math.round(s / 60);
+  if (m < 1) return "under a minute";
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
 }
 async function renderTrainingBand() {
@@ -264,8 +265,9 @@ async function renderTrainingBand() {
   const running = runs.some((p) => Math.round(parseFloat(p.value[1])) > 0);  // a finished run needs no time
   state.left = running && total && step !== null && perStep ? (total - step) * perStep : null;
   $("run-meta").textContent = total ? `step ${step} of ${total}${epochs ? ` · epoch ${epoch ?? 1} of ${epochs}` : ""}`
-    + `${state.left ? ` · about ${duration(state.left)} left` : ""}` : "";
+    + `${state.left ? ` · ${leftText(state.left)}` : ""}` : "";
 }
+const leftText = (s) => (Math.round(s / 60) < 1 ? "under a minute left" : `about ${duration(s)} left`);
 async function renderRunning() {
   if (state.mode === "training") return renderTrainingBand();
   const r = SPEC.running, phases = await instant(r.phase_query);
@@ -276,7 +278,7 @@ async function renderRunning() {
   const [done, total, perPage] = await Promise.all([one(r.done_query), one(r.total_query), one(r.seconds_per_page_query)]);
   const left = total && done !== null && perPage ? (total - done) * perPage : null;
   state.left = left;
-  $("run-meta").textContent = total ? `page ${done} of ${total}${left ? ` · about ${duration(left)} left` : ""}` : "";
+  $("run-meta").textContent = total ? `page ${done} of ${total}${left ? ` · ${leftText(left)}` : ""}` : "";
 }
 async function renderEnergy() {
   const e = SPEC.energy, step = chosen().step;
@@ -466,5 +468,5 @@ async function main() {
 }
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
-  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText };
+  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText };
 }
