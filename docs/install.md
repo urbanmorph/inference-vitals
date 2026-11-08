@@ -89,7 +89,9 @@ works. The proxy works the same on Linux. Windows is not supported (under WSL2, 
   format ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 - **Some machine tiles stay empty on Linux**: GPU numbers need `nvidia-smi`; CPU temperature needs a
   `coretemp` or `k10temp` sensor, which virtual machines usually lack.
-- **No battery chip on a laptop**: it shows only while the laptop runs on its battery.
+- **No battery chip on a laptop**: the system exporter reads no battery. On a Mac, check
+  `ioreg -rn AppleSmartBattery` lists one; on Linux, `/sys/class/power_supply/BAT0`. Run `stop` and
+  `start` after updating inference-vitals, so the exporter runs the new code.
 
 ## Uninstall
 

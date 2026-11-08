@@ -25,8 +25,8 @@ started swapping, or a page was simply longer.
   learning or has started memorising its examples.
 - **The machine**: GPU memory left, memory pressure, swap, GPU use, temperatures, thermal state, power.
 - **Energy**: what the machine used over any range, how much of it was the AI, and the cost at your rate.
-- **Battery** on a laptop: how long it will last at this load, and a warning when it will not outlast
-  the run.
+- **Battery** on a laptop: the charge, and on battery how long it will last at this load, with a warning
+  when it will not outlast the run.
 
 The page explains each tile: [docs/dashboard.md](docs/dashboard.md).
 

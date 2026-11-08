@@ -227,8 +227,9 @@ async function decideMode() {
   $("band-label").textContent = state.mode === "training" ? "Training" : "Running";
   $("run-h").textContent = state.mode === "training" ? "The training run" : "The run";
 }
-function batteryText(b, left) {  // only on battery: charge, and the time left at the battery's own draw now
-  if (b.percent === null || b.percent === undefined || b.onPower) return { hidden: true, text: "", warn: false };
+function batteryText(b, left) {  // a laptop's battery: on power its charge; on battery the time left at its draw now
+  if (b.percent === null || b.percent === undefined) return { hidden: true, text: "", warn: false };  // no battery
+  if (b.onPower) return { hidden: false, text: `🔌 ${Math.round(b.percent)}% · on power`, warn: false };
   if (!b.draw || !b.wh) return { hidden: false, text: `🔋 ${Math.round(b.percent)}%`, warn: false };
   const secs = (b.wh / b.draw) * 3600, warn = left !== null && left !== undefined && secs < left;
   return { hidden: false, warn,

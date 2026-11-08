@@ -75,10 +75,13 @@ test("the page shows whichever reported last, a fine-tune or a model run", () =>
   assert.equal(modeOf(null, null), "inference");  // nothing yet: today's page
 });
 
-test("the battery chip shows only on battery, with the time left at this load", () => {
+test("the battery chip shows on any laptop: on power its charge, on battery the time left at this load", () => {
   const { batteryText } = page;
   assert.equal(batteryText({ percent: 64, wh: 49.6, draw: 24.8, onPower: 0 }, null).text, "🔋 64% · ~2 h 0 min at this load");
-  assert.equal(batteryText({ percent: 64, wh: 49.6, draw: 24.8, onPower: 1 }, null).hidden, true);  // on power
+  const plugged = batteryText({ percent: 87, wh: 71, draw: null, onPower: 1 }, 600);
+  assert.equal(plugged.hidden, false);
+  assert.equal(plugged.text, "🔌 87% · on power");
+  assert.equal(plugged.warn, false);  // on power, a run never outlasts it
   assert.equal(batteryText({ percent: null }, null).hidden, true);  // no battery
   assert.equal(batteryText({ percent: 80, wh: 40, draw: null, onPower: 0 }, null).text, "🔋 80%");  // no rate yet
   const short = batteryText({ percent: 18, wh: 6, draw: 60, onPower: 0 }, 9 * 60);  // 6 min left, the run needs 9

@@ -73,10 +73,11 @@ of day, so the page never guesses one. On Linux only the GPUs are metered.
 
 ## Battery
 
-On battery, a chip beside the clock shows the charge and how long it will last at the current load,
-worked out from what the battery is giving right now (so it changes as soon as a run starts or stops). It
-turns amber when the battery will run out before the run finishes. On mains power, and on machines with no
-battery, it does not appear.
+On a laptop, a chip beside the clock shows the battery. On mains power it shows the charge
+(`🔌 87% · on power`). On battery it shows the charge and how long it will last at the current load,
+worked out from what the battery is giving right now, so it changes as soon as a run starts or stops
+(`🔋 64% · ~2 h 0 min at this load`); it turns amber when the battery will run out before the run
+finishes. On a machine with no battery it does not appear.
 
 ## Themes and address options
 
