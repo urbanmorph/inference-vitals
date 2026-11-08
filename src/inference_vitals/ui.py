@@ -67,9 +67,10 @@ def _tiles(platform: str) -> dict:
     slow_title, slow_query, slow_names, _, _ = hw["slowdown"]
     power_title, power_query = hw["power"]
     if platform == MAC:
-        mem = {
-            "used_query": "max(vitals_peak_memory_bytes)",
-            "limit_query": "max(vitals_gpu_memory_limit_bytes)",
+        mem = {  # a model run's own figures when it reports them, else the whole machine's (macmon)
+            "used_query": "max(vitals_peak_memory_bytes) or max(macmon_memory_ram_used_bytes)",
+            "limit_query": "max(vitals_gpu_memory_limit_bytes) or max(macmon_memory_ram_total_bytes)",
+            "model_query": "max(vitals_gpu_memory_limit_bytes)",
         }
     else:
         mem = {

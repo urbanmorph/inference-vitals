@@ -275,7 +275,10 @@ HW = {
         # One machine, so max(): a tile shows one number even if Prometheus briefly holds two copies.
         "gpu_busy": "max(macmon_gpu_active_ratio)",
         "gpu_temp": "max(macmon_gpu_temp_celsius)",
-        "gpu_mem_left": "min(vitals_gpu_memory_limit_bytes - vitals_peak_memory_bytes)",  # the tightest model
+        # the tightest model's own peak against the GPU limit, when a run reports them; otherwise the
+        # memory left on the machine (Apple Silicon: the GPU and the rest share one memory)
+        "gpu_mem_left": "min(vitals_gpu_memory_limit_bytes - vitals_peak_memory_bytes) or "
+        "(max(macmon_memory_ram_total_bytes) - max(macmon_memory_ram_used_bytes))",
         "slowdown": ("Thermal", "max(vitals_host_thermal_state)", THERMAL_NAMES, 1, 2),
         "power": ("Mac power", "max(macmon_sys_power_watts)"),
         "meter": "max(macmon_sys_power_watts)",  # the whole Mac

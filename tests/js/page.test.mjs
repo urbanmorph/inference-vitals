@@ -95,3 +95,8 @@ test("a learning rate and other tiny numbers keep their digits", () => {
   assert.equal(page.text(0.0001, "none"), "1.0e-4");
   assert.equal(page.text(0.42, "none"), "0.42");
 });
+
+test("a memory note stays short enough for a tile", () => {
+  assert.equal(page.ofText(43.9e9, 51.5e9, ", machine"), "43.9 of 51.5 GB, machine");
+  assert.equal(page.ofText(800e6, 51.5e9, " in use"), "800 MB of 51.5 GB in use");  // units differ: both shown
+});

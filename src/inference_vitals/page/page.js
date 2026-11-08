@@ -136,6 +136,10 @@ function niceMax(v) {  // the next round number at or above v: 1, 2, 2.5 or 5 ti
 const head = (title, v, unit, t, digits, shown) => { const f = shown === undefined ? fmt(v, unit, digits) : { n: shown, u: "" };
   return `<div class="name">${esc(title)}</div><div class="value ${t}">${esc(f.n)}<span class="unit">${esc(f.u)}</span></div>`; };
 const sub = (s) => `<div class="sub">${esc(s || "")}</div>`;
+function ofText(used, limit, tail) {  // "43.9 of 51.5 GB in use": short enough for a tile's note
+  const u = fmt(used, "bytes"), l = fmt(limit, "bytes");
+  return `${u.n}${u.u === l.u ? "" : ` ${u.u}`} of ${l.n} ${l.u}${tail}`;
+}
 
 async function renderTile(t) {
   const v = t.query ? await one(fill(t.query)) : null;
@@ -164,9 +168,9 @@ async function renderTile(t) {
       }
       return head(t.title, scaled, t.unit, tn) + sub(note) + bar(scaled, tn, t.ticks);
     }
-    case "split": {
-      const [used, limit] = await Promise.all([one(t.used_query), one(t.limit_query)]);
-      return head(t.title, v, t.unit, tn) + sub(used !== null && limit ? `${text(used, "bytes")} of ${text(limit, "bytes")} in use` : "")
+    case "split": {  // with model_query: no model reporting its own figures means these are the machine's
+      const [used, limit, model] = await Promise.all([one(t.used_query), one(t.limit_query), t.model_query ? one(t.model_query) : 1]);
+      return head(t.title, v, t.unit, tn) + sub(used !== null && limit ? ofText(used, limit, model === null ? ", machine" : " in use") : "")
         + bar(limit ? (used / limit) * 100 : 0, tn, [], "var(--muted)");
     }
     case "ring":
@@ -469,5 +473,5 @@ async function main() {
 }
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
-  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText };
+  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText };
 }

@@ -25,8 +25,9 @@ engine offers, and Ollama's own `/api/chat` and `/api/generate`. When the engine
 and timings (OpenAI `usage`, llama.cpp `timings`, Ollama's counts and durations), those are used;
 otherwise tokens are counted as they stream in, which is close but not exact.
 
-What a proxy cannot see is the engine's own GPU memory, so "GPU mem left" and the model memory chart
-stay empty; the machine's memory, pressure and swap panels still show everything. "Progress" and
+What a proxy cannot see is the engine's own GPU memory, so the model memory chart stays empty and "GPU
+mem left" shows the memory left on the whole machine instead; the machine's memory, pressure and swap
+panels still show everything. "Progress" and
 "Context used" also stay empty, since a proxy knows neither how many requests are coming nor the
 engine's context limit.
 

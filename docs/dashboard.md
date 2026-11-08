@@ -12,7 +12,7 @@ or a trend line where the pattern over time matters more than the reading now), 
 
 | The run | The machine (Mac; differences on Linux below) |
 | --- | --- |
-| **Progress** through the current run | **GPU mem left**: memory left before macOS's limit for the GPU |
+| **Progress** through the current run | **GPU mem left**: the model's memory against macOS's limit for the GPU, when a run reports both (the library does); otherwise the memory left on the whole machine, which the GPU shares |
 | **Writing now**: tokens per second, live, while the answer is written | **Memory free**, macOS's own memory-pressure level |
 | **TTFT (median)**: time to first token | **Swap in/out**: bytes moving to and from swap right now |
 | **Reading speed**: prompt tokens per second | **GPU busy** |

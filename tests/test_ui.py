@@ -232,3 +232,17 @@ def test_every_training_number_is_the_latest_runs_never_an_older_ones():
     for k, q in t["band"].items():
         if k.endswith("query"):
             assert latest in q, k
+
+
+def test_on_a_mac_gpu_memory_left_falls_back_to_the_whole_machine_when_no_model_reports_its_limit():
+    tile = next(t for t in ui.spec(monitor.MAC)["tiles"]["machine"] if t["title"] == "GPU mem left")
+    # the model's own figure first; else the shared memory macmon reports (Apple Silicon: GPU and CPU share it)
+    assert tile["query"].startswith("min(vitals_gpu_memory_limit_bytes - vitals_peak_memory_bytes) or ")
+    assert (
+        "macmon_memory_ram_total_bytes" in tile["query"] and "macmon_memory_ram_used_bytes" in tile["query"]
+    )
+    assert tile["limit_query"] == "max(vitals_gpu_memory_limit_bytes) or max(macmon_memory_ram_total_bytes)"
+    assert tile["used_query"] == "max(vitals_peak_memory_bytes) or max(macmon_memory_ram_used_bytes)"
+    assert tile["model_query"] == "max(vitals_gpu_memory_limit_bytes)"  # which of the two is shown
+    linux = next(t for t in ui.spec(monitor.LINUX)["tiles"]["machine"] if t["title"] == "GPU mem left")
+    assert linux["query"] == "sum(vitals_gpu_memory_free_bytes)"  # nvidia-smi always knows

@@ -42,7 +42,7 @@ Only one of the proxy, the library, `train` and `watch-training` can report at a
 | --- | --- | --- |
 | Band says "Nothing reporting" | Nothing on 8400 | Start the proxy, the library, or `train`; check `curl 127.0.0.1:8400/metrics` |
 | `NOT READY` from `start` | Port in use, often a `brew services` copy | `brew services stop prometheus` (or the named one), then `start` |
-| Tiles empty with the proxy: GPU mem left, Progress, Context used | A proxy cannot see these | Expected; the library reports them |
+| Tiles empty with the proxy: Progress, Context used (and GPU mem left shows the whole machine) | A proxy cannot see these | Expected; the library reports them |
 | A fine-tune shows no numbers | Its trainer's output format is not known | Use `inference_vitals.training` in the loop, or add the format ([CONTRIBUTING.md](CONTRIBUTING.md)) |
 | `address already in use` on 8400 | Two reporters at once | Stop one |
 | Machine tiles empty on Linux | No `nvidia-smi`, or no CPU sensor (VMs) | Install the NVIDIA driver; CPU temperature needs real hardware |
