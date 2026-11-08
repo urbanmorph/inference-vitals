@@ -149,3 +149,31 @@ test("energy per token divides the energy of that kind of work by its own tokens
   assert.equal(perToken({ aiRun: null, tokens: 1000 }, "inference"), null);
   assert.equal(perToken({ aiRun: 1, tokens: 0 }, "inference"), null);
 });
+
+test("a run counts as training only while it is still being read; a killed one is stale", () => {
+  const { runState } = page;
+  assert.equal(runState(1, 1000, 1030), "training");
+  assert.equal(runState(1, 1000, 1200), "stale");  // phase says step, but nothing has read it for 200 s
+  assert.equal(runState(0, 1000, 1200), "finished");
+  assert.equal(runState(null, null, 1200), "none");
+});
+
+test("while the model loads there is a start but no update yet: the window runs to now", () => {
+  assert.deepEqual(page.runWindow(1000, null, false, 1600), [970, 1630]);
+});
+
+test("favourites never name a chart this page does not have, and starring keeps your training charts", () => {
+  const { favouritesFor, starred } = page;
+  const charts = { speed: 1, loss: 1 };
+  const d = { inference: ["speed"], training: ["loss", "speed"] };
+  assert.deepEqual(favouritesFor('["gone","speed"]', d, "inference", new Set(["loss"]), charts), ["speed"]);
+  // in a model run, starring "speed" off must not drop the stored training chart "loss"
+  assert.deepEqual(starred('["loss","speed"]', d, "inference", "speed"), ["loss"]);
+});
+
+test("the address written on a tab click has the current range, theme and tab", () => {
+  const { addressFor } = page;
+  assert.equal(addressFor(new URLSearchParams("range=1h&x=1"), { range: "7d", theme: "dark", view: "memory" }),
+    "?range=7d&x=1&theme=dark&view=memory");
+  assert.equal(addressFor(new URLSearchParams(""), { range: "1h", theme: null, view: "favourites" }), "?range=1h&view=favourites");
+});

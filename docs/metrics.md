@@ -43,12 +43,12 @@ one exists. Labels: `model_name`.
 ## A fine-tune
 
 On `127.0.0.1:8400`, from `train`, `watch-training` or the training library ([training.md](training.md)).
-Labels: `run_name`.
+Labels: `run_name`, and `run_id` (the run's start time, so two runs with one name never mix).
 
 | Metric | Meaning |
 | --- | --- |
 | `vitals_training_phase` | 0 idle (or finished), 1 step, 2 validating, 3 saving |
-| `vitals_training_step_part` | Within a step, when reported: 1 read, 2 backward, 3 write |
+| `vitals_training_step_part` | Within a step, when reported: 1 read, 2 backward, 3 write (0 when not) |
 | `vitals_training_step`, `vitals_training_total_steps` | Where the run is |
 | `vitals_training_epoch`, `vitals_training_epochs` | The same, in epochs |
 | `vitals_training_loss` | Training loss |
@@ -61,6 +61,7 @@ Labels: `run_name`.
 | `vitals_training_peak_memory_bytes` | The trainer's peak memory |
 | `vitals_training_started_seconds` | When it started (the page's training charts span the run) |
 | `vitals_training_updated_seconds` | When it last reported |
+| `vitals_training_alive_seconds` | When it was last read: a run that stops answering (killed) goes stale |
 
 ## The machine
 

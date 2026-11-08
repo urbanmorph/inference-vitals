@@ -224,11 +224,13 @@ def test_a_finished_fine_tune_stays_readable_with_its_last_numbers():
     band = t["band"]
     assert "last_over_time(vitals_training_phase[7d])" in band["phase_query"]
     assert "topk(1" in band["phase_query"]  # only the latest run, not every run of the week
+    assert "on(run_name, run_id)" in band["phase_query"]  # two runs called "python" are still two runs
+    assert "vitals_training_alive_seconds" in band["alive_query"]
 
 
 def test_every_training_number_is_the_latest_runs_never_an_older_ones():
     t = ui.spec(monitor.MAC)["training"]
-    latest = "and on(run_name) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
+    latest = "and on(run_name, run_id) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
     for tile in t["tiles"]:
         assert latest in tile["query"], tile["title"]
     for k, q in t["band"].items():

@@ -124,3 +124,57 @@ def test_a_trainer_that_times_its_own_steps_is_believed():
 def test_a_run_says_when_it_started_so_its_charts_can_span_just_the_run():
     run = training.Training("rf-1", wall=lambda: 1_700_000_000.0)
     assert _values(run.render())["vitals_training_started_seconds"] == 1_700_000_000.0
+
+
+def test_a_tie_with_a_validation_before_any_training_step_does_not_break_the_numbers():
+    run = training.Training("rf-1")
+    run.validate(2.5)  # mlx-lm validates at step 1, before its first training line: no train loss yet
+    run.step(10, loss=2.0)
+    run.validate(2.5)  # a tie, as 3-decimal output makes likely
+    run.validate(2.6)
+    assert _values(run.render())["vitals_training_verdict"] == training.WATCH
+
+
+def test_a_run_name_with_a_quote_or_a_backslash_is_escaped():
+    text = training.Training('a"b\\c\nd').render()
+    assert 'run_name="a\\"b\\\\c\\nd"' in text
+
+
+def test_each_run_has_its_own_id_so_two_runs_with_one_name_never_mix():
+    a = training.Training("python", wall=lambda: 1_700_000_000.0).render()
+    b = training.Training("python", wall=lambda: 1_700_000_500.0).render()
+    assert 'run_id="1700000000"' in a and 'run_id="1700000500"' in b
+
+
+def test_the_step_part_reads_zero_when_none_is_reported_rather_than_keeping_the_last():
+    run = training.Training("rf-1")
+    run.step(1, loss=1.0)
+    run.part("write")
+    run.step(2, loss=0.9)  # a new step: no part reported yet
+    assert _values(run.render())["vitals_training_step_part"] == 0
+
+
+def test_a_live_run_says_it_is_alive_each_time_it_is_read():
+    run = training.Training("rf-1", wall=iter([1_700_000_000.0, 1_700_000_042.0]).__next__)
+    assert (
+        _values(run.render())["vitals_training_alive_seconds"] == 1_700_000_042.0
+    )  # read time, not event time
+
+
+def test_a_watched_log_that_stops_growing_marks_the_run_idle(tmp_path):
+    from inference_vitals import follow
+
+    log = tmp_path / "train.log"
+    log.write_text(
+        "Iter 10: Train loss 1.234, Learning Rate 1.000e-05, It/sec 0.5, Tokens/sec 412.3, Peak mem 7.5 GB\n"
+    )
+    run = training.Training("t")
+    ticks = iter([0, 0, 400, 400, 400])
+    calls = {"n": 0}
+
+    def stop():
+        calls["n"] += 1
+        return calls["n"] > 2
+
+    follow.watch(log, run, stop=stop, poll=0, clock=lambda: next(ticks), idle_after=300)
+    assert run.phase == training.PHASES["idle"]  # no new lines for 400 s: not "Step" for a week

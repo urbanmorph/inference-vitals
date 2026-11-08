@@ -111,7 +111,11 @@ def mac_battery(text: str):
     }
     amps = re.search(r'"(?:InstantAmperage|Amperage)" = (-?\d+)', text)  # mA, negative while it gives power
     if not out["vitals_battery_on_power"] and amps:
-        out["vitals_battery_draw_watts"] = round(abs(int(amps.group(1))) * volts_mv / 1e6, 1)
+        ma = int(amps.group(1))
+        ma = (
+            ma - 2**64 if ma >= 2**63 else ma
+        )  # ioreg often prints a negative current as an unsigned 64-bit number
+        out["vitals_battery_draw_watts"] = round(abs(ma) * volts_mv / 1e6, 1)
     return out
 
 

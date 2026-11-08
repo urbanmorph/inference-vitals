@@ -194,3 +194,9 @@ def test_a_server_with_no_battery_has_none(tmp_path):
 def test_on_power_nothing_is_drawn_from_the_battery():
     plugged = sysstat.mac_battery(IOREG.replace('"ExternalConnected" = No', '"ExternalConnected" = Yes'))
     assert "vitals_battery_draw_watts" not in plugged
+
+
+def test_a_negative_current_printed_as_an_unsigned_number_is_read_as_negative():
+    unsigned = str(2**64 - 2000)  # how ioreg often prints -2000 mA
+    b = sysstat.mac_battery(IOREG.replace('"InstantAmperage" = -2000', f'"InstantAmperage" = {unsigned}'))
+    assert b["vitals_battery_draw_watts"] == 24.8

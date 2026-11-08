@@ -11,6 +11,7 @@ inference_vitals.training instead.
 """
 
 import argparse
+import codecs
 import os
 import re
 import subprocess
@@ -103,36 +104,52 @@ def train(
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             env={**os.environ, "PYTHONUNBUFFERED": "1"})  # fmt: skip
 
+    decode = codecs.getincrementaldecoder("utf-8")(errors="replace").decode  # a character may span two reads
+
     def chunks():
         while data := os.read(proc.stdout.fileno(), 4096):
-            text = data.decode(errors="replace")
-            sys.stdout.write(text)
-            sys.stdout.flush()
-            yield text
+            sys.stdout.buffer.write(data)  # the trainer's own bytes, untouched
+            sys.stdout.buffer.flush()
+            yield decode(data)
 
     try:
         for part in _parts(chunks()):
             reader.feed(part)
         return proc.wait()
+    except KeyboardInterrupt:  # Ctrl-C: stop the trainer too, and do not wait long for the last read
+        proc.terminate()
+        proc.wait(10)
+        linger = min(linger, 5)
+        return 130
     finally:
         run.finish(linger)
         if on_finish:
             on_finish(run)
 
 
-def watch(path, run: training.Training, stop=lambda: False, poll=1.0):
-    """Read a log file as it grows, until stop() says so at its end (Ctrl-C from the command line)."""
+IDLE_AFTER = 300  # seconds without a new line before a watched run counts as no longer training
+
+
+def watch(
+    path, run: training.Training, stop=lambda: False, poll=1.0, clock=time.monotonic, idle_after=IDLE_AFTER
+):
+    """Read a log file as it grows, until stop() says so at its end (Ctrl-C from the command line). A log
+    that stops growing for `idle_after` seconds marks the run idle, so it is not shown training for days."""
     reader = Reader(run)
     with open(path, errors="replace") as f:
 
         def chunks():
+            last = clock()
             while True:
                 text = f.read()
                 if text:
+                    last = clock()
                     yield text
                 elif stop():
                     return
                 else:
+                    if clock() - last > idle_after and run.phase != training.PHASES["idle"]:
+                        run.idle()
                     time.sleep(poll)
 
         for part in _parts(chunks()):
@@ -150,7 +167,7 @@ def main(action: str, argv: list[str]):
         args = p.parse_args(own)
         if not cmd:
             p.error("give the training command after --")
-        return train(cmd, args.name or os.path.basename(cmd[0]), args.port, args.epochs)
+        return train(cmd, args.name or default_name(cmd), args.port, args.epochs)
     p.add_argument("log", help="the trainer's log file")
     args = p.parse_args(argv)
     run = training.start(args.name or os.path.basename(args.log), epochs=args.epochs, port=args.port)
@@ -161,6 +178,14 @@ def main(action: str, argv: list[str]):
     finally:
         run.finish()
     return 0
+
+
+def default_name(cmd: list[str]) -> str:
+    """A run's name when none is given: the module after -m, else the script, else the program."""
+    if "-m" in cmd[:-1]:
+        return cmd[cmd.index("-m") + 1]
+    script = next((a for a in cmd[1:] if a.endswith(".py")), None)
+    return os.path.basename(script or cmd[0])
 
 
 def _split(argv: list[str]):

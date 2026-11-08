@@ -1,5 +1,6 @@
 """Publish what a fine-tuning run is doing, for the dashboard: the same /metrics page on 127.0.0.1 as a
-model run, with vitals_training_* numbers. Numbers only: no text, file name or data ever reaches it.
+model run, with vitals_training_* numbers. Numbers only, labelled with the run's name (which you choose,
+or the trainer's command or log file's name by default) and its start time.
 
     from inference_vitals import training
     run = training.start("my-adapter", total_steps=400, epochs=2)
@@ -33,7 +34,7 @@ class Training:
         self.name, self.total_steps, self.epochs = name, total_steps, epochs
         self.clock, self.wall = clock, wall
         self.lock = threading.Lock()
-        self.phase, self.step_part = PHASES["idle"], None
+        self.phase, self.step_part = PHASES["idle"], 0  # 0: no part reported
         self.now: dict = {}  # the latest of each number a step reported
         self.vals: list[tuple[float, float | None]] = []  # (validation loss, training loss at that time)
         self.last_step_at = None
@@ -57,7 +58,7 @@ class Training:
                         "tokens_per_second": tokens_per_second, "peak_memory_gb": peak_memory_gb, "epoch": epoch,
                         "trained_tokens": trained_tokens, "step_seconds": step_seconds}  # fmt: skip
             self.now.update({k: v for k, v in reported.items() if v is not None})
-            self.phase, self.step_part = PHASES["step"], None
+            self.phase, self.step_part = PHASES["step"], 0
             self._touch()
 
     def part(self, name: str):
@@ -67,7 +68,7 @@ class Training:
 
     def validating(self):
         with self.lock:
-            self.phase, self.step_part = PHASES["validate"], None
+            self.phase, self.step_part = PHASES["validate"], 0
             self._touch()
 
     def validate(self, val_loss: float):
@@ -77,15 +78,20 @@ class Training:
 
     def saving(self):
         with self.lock:
-            self.phase, self.step_part = PHASES["save"], None
+            self.phase, self.step_part = PHASES["save"], 0
+            self._touch()
+
+    def idle(self):
+        """Not training now (finished, or a watched log stopped growing); a later step resumes it."""
+        with self.lock:
+            self.phase, self.step_part = PHASES["idle"], 0
             self._touch()
 
     def finish(self, linger: float = 20.0):
         """Mark the run finished. If it is being served, keep serving until the dashboard has read that
         (Prometheus reads every 15 s), or `linger` seconds, so a short run does not end mid-step there."""
+        self.idle()
         with self.lock:
-            self.phase, self.step_part = PHASES["idle"], None
-            self._touch()
             self.was_read.clear()
         if getattr(self, "server", None):
             self.was_read.wait(linger)
@@ -97,7 +103,9 @@ class Training:
         if len(self.vals) < 2:
             return None
         last, train_now = self.vals[-1]
-        best, train_at_best = min(self.vals[:-1])
+        best, train_at_best = min(
+            self.vals[:-1], key=lambda v: v[0]
+        )  # train loss may be None: never compared
         if last < best:
             return LEARNING
         falling = train_now is not None and train_at_best is not None and train_now < train_at_best
@@ -109,10 +117,13 @@ class Training:
             n = self.now
             gauges = [
                 ("vitals_training_phase", self.phase),
+                ("vitals_training_step_part", self.step_part),
                 ("vitals_training_started_seconds", self.started),
+                (
+                    "vitals_training_alive_seconds",
+                    self.wall(),
+                ),  # read time: a run that stops answering goes stale
             ]
-            if self.step_part is not None:
-                gauges.append(("vitals_training_step_part", self.step_part))
             for key, name in (("step", "step"), ("loss", "loss"), ("learning_rate", "learning_rate"),
                               ("tokens_per_second", "tokens_per_second"), ("step_seconds", "step_seconds"),
                               ("epoch", "epoch")):  # fmt: skip
@@ -134,7 +145,8 @@ class Training:
                 gauges.append(("vitals_training_verdict", verdict))
             if self.updated is not None:
                 gauges.append(("vitals_training_updated_seconds", self.updated))
-            return "".join(f'{name}{{run_name="{self.name}"}} {value}\n' for name, value in gauges)
+            labels = f'run_name="{_escaped(self.name)}",run_id="{self.started:.0f}"'  # the id keeps same-named runs apart
+            return "".join(f"{name}{{{labels}}} {value}\n" for name, value in gauges)
 
     def snapshot(self) -> str:
         with self.lock:
@@ -142,6 +154,11 @@ class Training:
             if self.vals:
                 out["val_loss"] = self.vals[-1][0]
             return json.dumps(out)
+
+
+def _escaped(value: str) -> str:
+    """A label value as Prometheus's text format needs it: backslash, quote and newline escaped."""
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
 def start(name: str, total_steps=None, epochs=None, port: int = DEFAULT_PORT) -> Training:

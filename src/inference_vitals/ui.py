@@ -5,8 +5,9 @@ reads Prometheus through two read-only routes, /api/v1/query and /api/v1/query_r
 only their own parameters; nothing else reaches Prometheus and nothing can be written.
 
 What the page shows comes from `spec(platform)`: the tiles (each with the gauge that suits its number),
-the energy used in the chosen time range and how much of it was the model's, the main chart, and the
-folded sections, which are the Grafana dashboard's own detail panels so the two never drift apart.
+a model run's band and a fine-tune's, the energy used in the chosen range and how much of it was the AI,
+the battery, and the charts: each defined once (`charts`), grouped in tabs that follow the Grafana
+dashboard's rows (`views`), with the charts Favourites starts with (`favourites`).
 
   python -m inference_vitals.ui --port 3000 --platform mac
 """
@@ -138,7 +139,7 @@ def _training(platform: str) -> dict:
     shows these instead of a model run's whenever the fine-tune reported last."""
     # the last value the latest run reported, so a finished run stays readable (its final loss, its
     # verdict) and an older run's numbers never mix in
-    latest = "and on(run_name) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
+    latest = "and on(run_name, run_id) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
     t = ("max(last_over_time(vitals_training_{}[7d]) " + latest + ")").format
     tiles = [
         {"title": "Progress", "kind": "progress", "of": "steps", "query": f"{t('step')} / {t('total_steps')}",
@@ -169,6 +170,7 @@ def _training(platform: str) -> dict:
             # the run's span: its charts show just the run, however long or short
             "started_query": t("started_seconds"),
             "now_phase_query": t("phase"),  # one number: above 0 while the latest run is still going
+            "alive_query": t("alive_seconds"),  # when it was last read: a killed run stops being read
             "updated_query": t("updated_seconds"),
         },
         "tiles": tiles,

@@ -27,7 +27,7 @@ Routes 1 and 2 read what the trainer prints, so they work only with trainers who
 | Trainer | What is read | Tested against |
 | --- | --- | --- |
 | [mlx-vlm](https://github.com/Blaizzy/mlx-vlm) `mlx_vlm.train` | steps, train and validation loss, learning rate, tokens/s, trained tokens, step time, peak memory, saving | its source (mlx-vlm 0.7) and the output of a live LoRA run on a Mac |
-| [mlx-lm](https://github.com/ml-explore/mlx-examples) `mlx_lm.lora` | the same, from its `Iter N: ...` lines | its documented output format |
+| [mlx-lm](https://github.com/ml-explore/mlx-lm) `mlx_lm.lora` | the same, from its `Iter N: ...` lines | its documented output format |
 
 Lines they do not recognise change nothing, so another trainer's run simply shows no numbers. To add a
 trainer, see [CONTRIBUTING.md](../CONTRIBUTING.md).
@@ -62,7 +62,9 @@ for step, batch in enumerate(batches, 1):
 run.finish()  # waits (at most 20 s) until the dashboard has read that it finished
 ```
 
-Every argument but the step is optional; `step_seconds=` can pass the trainer's own step time. A loop
+Every argument but the step is optional; `step_seconds=` can pass the trainer's own step time. With
+`train`, a run is named after the module it runs (`mlx_vlm.train`) unless you give `--name`; two runs with
+one name are still told apart by their start time. A loop
 that knows which part of a step it is in can also say `run.part("read")`, `"backward"` or `"write"`, and
 the band shows it. Each number carries a `run_name` label: the name you give, so keep anything private out
 of it. The full list of names is in [metrics.md](metrics.md#a-fine-tune).

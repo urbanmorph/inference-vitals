@@ -105,3 +105,16 @@ def test_a_real_mlx_vlm_run_is_read_in_full():
     assert run.total_steps == 6  # from the progress bar: this version prints no "Starting training" line
     assert run.vals[-1][0] == 0.83765
     assert run.phase == training.PHASES["save"]  # "Saved final trainable weights"
+
+
+def test_train_passes_the_trainers_bytes_through_even_when_a_character_spans_two_reads(capfdbinary):
+    script = "import sys; sys.stdout.buffer.write(('█' * 3000 + '\\n').encode()); sys.stdout.flush()"
+    follow.train([sys.executable, "-c", script], name="t", port=0, linger=0)
+    out = capfdbinary.readouterr().out
+    assert ("█" * 3000).encode() in out and "�".encode() not in out
+
+
+def test_a_run_is_named_after_the_module_it_runs_not_after_python():
+    assert follow.default_name(["python", "-m", "mlx_vlm.train", "--model", "x"]) == "mlx_vlm.train"
+    assert follow.default_name(["/usr/bin/python3", "train.py"]) == "train.py"
+    assert follow.default_name(["./my-trainer", "--epochs", "2"]) == "my-trainer"

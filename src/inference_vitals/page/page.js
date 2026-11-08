@@ -31,9 +31,15 @@ function rangeQuery(query, points = 240, win = null) {  // win: [start, end] ins
   const [start, end] = win || [Date.now() / 1000 - chosen().seconds, Date.now() / 1000];
   return prom("/api/v1/query_range", { query, start, end, step: stepFor(points, end - start) }).catch(() => []);
 }
+const STALE = 90;  // seconds unread before a run that says it is training counts as stopped (killed)
+function runState(phase, alive, now) {  // "training", "stale", "finished" or "none"
+  if (phase === null || phase === undefined) return "none";
+  if (phase <= 0) return "finished";
+  return alive !== null && alive !== undefined && now - alive <= STALE ? "training" : "stale";
+}
 function runWindow(start, end, running, now) {  // a fine-tune's charts: its whole run, 5% room either side
   if (start === null || start === undefined) return null;
-  const last = running ? now : end, pad = (last - start) * 0.05 || 30;
+  const last = running || end === null || end === undefined ? now : end, pad = (last - start) * 0.05 || 30;
   return [start - pad, last + pad];
 }
 const fill = (q) => q.replaceAll("{range}", range);
@@ -267,23 +273,25 @@ function duration(s) {
 }
 async function trainingWindow() {  // the latest fine-tune's span, in either mode: its charts span the run
   const b = SPEC.training.band;
-  const [started, updated, phase] = await slow("window", () =>
-    Promise.all([one(b.started_query), one(b.updated_query), one(b.now_phase_query)]));
-  state.window = runWindow(started, updated, phase !== null && phase > 0, Date.now() / 1000);
+  const [started, updated, phase, alive] = await slow("window", () =>
+    Promise.all([one(b.started_query), one(b.updated_query), one(b.now_phase_query), one(b.alive_query)]));
+  const now = Date.now() / 1000;
+  state.window = runWindow(started, updated, runState(phase, alive, now) === "training", now);
 }
 async function renderTrainingBand() {
   const b = SPEC.training.band, runs = await instant(b.phase_query);
-  const [part, step, total, epoch, epochs, perStep] = await Promise.all(
-    [b.part_query, b.step_query, b.total_query, b.epoch_query, b.epochs_query, b.step_seconds_query].map(one));
+  const [part, step, total, epoch, epochs, perStep, alive] = await Promise.all(
+    [b.part_query, b.step_query, b.total_query, b.epoch_query, b.epochs_query, b.step_seconds_query, b.alive_query].map(one));
+  const now = Date.now() / 1000;
   $("models").innerHTML = runs.map((p) => {
-    const i = Math.round(parseFloat(p.value[1]));
-    const pills = b.names.slice(1).map((n, k) => {
+    const i = Math.round(parseFloat(p.value[1])), how = runState(i, alive, now);
+    const pills = how === "stale" ? `<span class="on">stopped reporting</span>` : b.names.slice(1).map((n, k) => {
       const on = i === k + 1, label = on && k === 0 && part ? `${n} · ${b.parts[Math.round(part)] || ""}` : n;
       return `<span class="${on ? "on" : ""}">${on ? '<span class="dot"></span>' : ""}${esc(label)}</span>`;
     }).join("") + (i === 0 ? `<span class="on">finished</span>` : "");
     return `<span class="model">${esc(p.metric.run_name || "training")} <span class="phases">${pills}</span></span>`;
   }).join("") || `<span class="idle">No fine-tune has reported this week.</span>`;
-  const running = runs.some((p) => Math.round(parseFloat(p.value[1])) > 0);  // a finished run needs no time
+  const running = runs.some((p) => runState(Math.round(parseFloat(p.value[1])), alive, now) === "training");
   state.left = running && total && step !== null && perStep ? (total - step) * perStep : null;
   $("run-meta").textContent = total ? `step ${step} of ${total}${epochs ? ` · epoch ${epoch ?? 1} of ${epochs}` : ""}`
     + `${state.left ? ` · ${leftText(state.left)}` : ""}` : "";
@@ -415,13 +423,26 @@ async function renderChart(el, panel, win = null) {
   }
 }
 // ---- tabs: Favourites, then one per kind of chart ----
-function favouritesFor(stored, defaults, mode, trainingCharts) {  // your stars, else the defaults
+function storedOrDefault(stored, defaults, mode) {  // your stars as kept, else the defaults
   let list = null;
   try { list = stored ? JSON.parse(stored) : null; } catch (e) { list = null; }
-  if (!Array.isArray(list)) list = defaults[mode];
-  return mode === "training" ? list : list.filter((t) => !trainingCharts.has(t));  // a fine-tune's charts wait for one
+  return Array.isArray(list) ? list : defaults[mode];
 }
+function favouritesFor(stored, defaults, mode, trainingCharts, charts = null) {  // what Favourites shows now
+  return storedOrDefault(stored, defaults, mode)
+    .filter((t) => !charts || t in charts)  // a chart this page does not have (renamed, other platform)
+    .filter((t) => mode === "training" || !trainingCharts.has(t));  // a fine-tune's charts wait for one
+}
+const starred = (stored, defaults, mode, title) => toggled(storedOrDefault(stored, defaults, mode), title);  // keeps hidden ones
 const toggled = (list, title) => (list.includes(title) ? list.filter((t) => t !== title) : [...list, title]);
+function addressFor(params, now) {  // the page's address as it is now: range, theme and tab
+  const out = new URLSearchParams(params);
+  out.set("range", now.range);
+  if (now.theme) out.set("theme", now.theme); else out.delete("theme");
+  out.delete("open");  // the old form, replaced by view
+  out.set("view", now.view);
+  return `?${out}`;
+}
 function viewFrom(params, keys) {  // ?view=memory; an old ?open=memory,hardware link opens its first
   const asked = (params.get("view") || (params.get("open") || "").split(",")[0] || "").toLowerCase();
   return keys.includes(asked) ? asked : "favourites";
@@ -432,7 +453,7 @@ function chartHeight(area, n) {  // two to a row (one alone takes the width), sh
 }
 let view = "favourites";
 const trainingCharts = () => new Set(SPEC.views.find((v) => v.run).charts);
-const favourites = () => favouritesFor(store.get("iv-favourites"), SPEC.favourites, state.mode, trainingCharts());
+const favourites = () => favouritesFor(store.get("iv-favourites"), SPEC.favourites, state.mode, trainingCharts(), SPEC.charts);
 function chartsOf(key) { return key === "favourites" ? favourites() : SPEC.views.find((v) => v.key === key).charts; }
 function tabs() {
   $("views").innerHTML = SPEC.views.map((v) => `<button role="tab" data-v="${v.key}" class="${v.key === view ? "on" : ""}">${esc(v.label)}</button>`).join("");
@@ -441,7 +462,8 @@ function tabs() {
     if (!k) return;
     view = k;
     document.querySelectorAll("#views button").forEach((b) => b.classList.toggle("on", b.dataset.v === k));
-    if (typeof history !== "undefined") history.replaceState(null, "", `?${new URLSearchParams({ ...Object.fromEntries(asked), view: k })}`);
+    history.replaceState(null, "", addressFor(new URLSearchParams(location.search),
+      { range, theme: document.documentElement.dataset.theme || null, view: k }));
     buildView();
     renderCharts();
   };
@@ -459,7 +481,7 @@ function buildView() {  // the boxes for the chosen tab's charts; renderCharts f
   grid.onclick = (ev) => {
     const t = ev.target.dataset && ev.target.dataset.star;
     if (!t) return;
-    store.set("iv-favourites", JSON.stringify(toggled(favourites(), t)));
+    store.set("iv-favourites", JSON.stringify(starred(store.get("iv-favourites"), SPEC.favourites, state.mode, t)));
     if (view === "favourites") buildView();
     renderCharts();
   };
@@ -540,5 +562,5 @@ async function main() {
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
   module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText, runWindow,
-    favouritesFor, toggled, viewFrom, chartHeight, perToken };
+    favouritesFor, toggled, viewFrom, chartHeight, perToken, runState, starred, addressFor };
 }
