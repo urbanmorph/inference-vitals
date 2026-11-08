@@ -1,6 +1,6 @@
 [project]
 name = "inference-vitals"
-version = "0.1.0"
+version = "0.2.0"
 description = "A dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs: speed, loss, memory, heat, power and battery"
 authors = [
     { name = "Urban Morph" }
