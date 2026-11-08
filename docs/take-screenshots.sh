@@ -1,5 +1,7 @@
 #!/bin/sh
 # Re-take the README screenshots from the running page (inference-vitals start, with a model working).
+# WHAT=training takes the training screenshot instead: run it during or just after a fine-tune that
+# inference-vitals follows (inference-vitals train -- ...), so the page is in training mode.
 # Uses Google Chrome's headless mode with a throwaway profile, so your own Chrome is not touched.
 set -eu
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -15,8 +17,12 @@ shot() { # name, url, width, height
 }
 
 shot warm-up "$URL" 800 600 && rm -f "$OUT/warm-up.png"  # a first load in a fresh profile can come back empty
-shot at-a-glance-dark "$URL&theme=dark" 1512 980
-shot at-a-glance-light "$URL&theme=light" 1512 980
-shot memory "$URL&theme=dark&open=memory" 1512 1700
-shot power "$URL&theme=dark&open=hardware" 1512 2100
+if [ "${WHAT:-run}" = training ]; then
+  shot training-dark "$URL&theme=dark" 1512 980
+else
+  shot at-a-glance-dark "$URL&theme=dark" 1512 980
+  shot at-a-glance-light "$URL&theme=light" 1512 980
+  shot memory "$URL&theme=dark&open=memory" 1512 1700
+  shot power "$URL&theme=dark&open=hardware" 1512 2100
+fi
 rm -rf "$PROFILE"

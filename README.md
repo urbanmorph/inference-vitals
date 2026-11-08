@@ -5,9 +5,9 @@
   </picture>
 </h1>
 
-**One screen for running AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs (experimental):
-how fast the model is, how close it is to running out of memory, and how hot the machine is getting, on
-the same timeline.**
+**One screen for running and fine-tuning AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs
+(experimental): how fast the model is (or how well it is learning), how close it is to running out of
+memory, and how hot the machine is getting, on the same timeline.**
 
 ![At a glance, during a run: speed, context, answers, memory, swap, GPU, heat and power](docs/screenshots/at-a-glance-dark.png)
 
@@ -368,6 +368,10 @@ tab open and closed and compare tokens per second.
   snapshots.raintank.io, public ("share externally") links, the plugin catalog, and the plugins it
   otherwise downloads from grafana.com on every start. It is view-only: sign-in and alerting are off.
 - Only numbers are collected. Configuration, history and logs stay in `~/.local/state/inference-vitals`.
+- Fine-tunes publish numbers only (loss, steps, speed, memory): `train` and `watch-training` pass the
+  trainer's output through or read it, and keep none of it. The run's name is the one label, so do not
+  put anything private in it.
+- The battery is read on the machine (macOS's battery report, Linux's `/sys`), like everything else.
 
 ## What it cannot show
 
