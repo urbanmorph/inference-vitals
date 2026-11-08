@@ -26,10 +26,15 @@ async function one(query) {
   const v = r.length ? parseFloat(r[0].value[1]) : NaN;
   return Number.isFinite(v) ? v : null;
 }
-const stepFor = (points) => Math.max(5, Math.round(chosen().seconds / points));
-function rangeQuery(query, points = 240) {
-  const end = Date.now() / 1000, span = chosen().seconds;
-  return prom("/api/v1/query_range", { query, start: end - span, end, step: stepFor(points) }).catch(() => []);
+const stepFor = (points, span = chosen().seconds) => Math.max(span < 600 ? 1 : 5, Math.round(span / points));
+function rangeQuery(query, points = 240, win = null) {  // win: [start, end] instead of the chosen range
+  const [start, end] = win || [Date.now() / 1000 - chosen().seconds, Date.now() / 1000];
+  return prom("/api/v1/query_range", { query, start, end, step: stepFor(points, end - start) }).catch(() => []);
+}
+function runWindow(start, end, running, now) {  // a fine-tune's charts: its whole run, 5% room either side
+  if (start === null || start === undefined) return null;
+  const last = running ? now : end, pad = (last - start) * 0.05 || 30;
+  return [start - pad, last + pad];
 }
 const fill = (q) => q.replaceAll("{range}", range);
 // Answers about the whole range (a top speed, a trend) change slowly: asked at most every CHARTS_EVERY
@@ -220,7 +225,7 @@ function clockText(date, locale, timeZone) {  // "23:01:05 IST": local time, wit
 }
 
 // ---- which run the page is about, and the battery ----
-const state = { energy: null, mode: "inference", left: null };  // left: seconds the current run still needs
+const state = { energy: null, mode: "inference", left: null, window: null };  // window: the latest fine-tune's span  // left: seconds the current run still needs
 function modeOf(trainingAt, runAt) {  // whichever reported last: a fine-tune, or a model run (the default)
   return trainingAt !== null && (runAt === null || trainingAt > runAt) ? "training" : "inference";
 }
@@ -268,6 +273,8 @@ async function renderTrainingBand() {
     return `<span class="model">${esc(p.metric.run_name || "training")} <span class="phases">${pills}</span></span>`;
   }).join("") || `<span class="idle">No fine-tune has reported this week.</span>`;
   const running = runs.some((p) => Math.round(parseFloat(p.value[1])) > 0);  // a finished run needs no time
+  const [started, updated] = await Promise.all([one(b.started_query), one(b.updated_query)]);
+  state.window = runWindow(started, updated, running, Date.now() / 1000);
   state.left = running && total && step !== null && perStep ? (total - step) * perStep : null;
   $("run-meta").textContent = total ? `step ${step} of ${total}${epochs ? ` · epoch ${epoch ?? 1} of ${epochs}` : ""}`
     + `${state.left ? ` · ${leftText(state.left)}` : ""}` : "";
@@ -340,10 +347,10 @@ function hover(el, ev) {  // the crosshair: a line at the pointer and a tooltip 
 }
 const label = (legend, metric) => (legend || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => metric[k] || "").trim() || metric.model_name || "";
 const PALETTE = ["var(--accent)", "#e3b341", "#58a6ff", "#bc8cff", "#39c5cf", "var(--muted)"];  // heat is the right axis's own
-async function renderChart(el, panel) {
+async function renderChart(el, panel, win = null) {
   const series = [];
   await Promise.all(panel.targets.map(async (t, ti) => {
-    for (const s of await rangeQuery(t.expr)) {
+    for (const s of await rangeQuery(t.expr, 240, win)) {
       series.push({ order: ti, axis: t.axis || "left", unit: t.unit || panel.unit, name: label(t.legend, s.metric),
         points: s.values.map(([x, y]) => [x, parseFloat(y)]).filter((p) => Number.isFinite(p[1])) });
     }
@@ -351,10 +358,10 @@ async function renderChart(el, panel) {
   series.sort((a, b) => a.order - b.order);
   const svgW = el.clientWidth || 600, H = el.dataset.h ? +el.dataset.h : 180;
   if (!series.some((s) => s.points.length)) {
-    el.innerHTML = `<h3>${esc(panel.title)}</h3><div class="empty">nothing recorded in the last ${chosen().label}</div>`;
+    el.innerHTML = `<h3>${esc(panel.title)}</h3><div class="empty">nothing recorded ${win ? "in this run" : `in the last ${chosen().label}`}</div>`;
     return;
   }
-  const end = Date.now() / 1000, start = end - chosen().seconds;
+  const [start, end] = win || [Date.now() / 1000 - chosen().seconds, Date.now() / 1000];
   const hasRight = series.some((s) => s.axis === "right"), L = 64, R = hasRight ? 56 : 12, T = 8, B = 22;
   const bounds = (axis) => { const v = series.filter((s) => s.axis === axis).flatMap((s) => s.points.map((p) => p[1]));
     return v.length ? [Math.min(0, ...v), niceMax(Math.max(...v))] : [0, 1]; };
@@ -370,10 +377,11 @@ async function renderChart(el, panel) {
       if (hasRight) g += `<text x="${svgW - R + 6}" y="${y + 4}">${esc(axisText(ax.right[1] - (i / 4) * (ax.right[1] - ax.right[0]), unitOf("right")))}</text>`;
     }
   }
-  const long = chosen().seconds > 86400;
+  const long = end - start > 86400, short = end - start < 600;
   for (let i = 0; i <= 4; i++) {
     const t = start + (i / 4) * (end - start), d = new Date(t * 1000);
-    const tl = long ? d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const tl = long ? d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" })
+      : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: short ? "2-digit" : undefined });
     g += `<text x="${X(t)}" y="${H - 5}" text-anchor="middle">${esc(tl)}</text>`;
   }
   const colors = series.map((s, i) => (s.axis === "right" ? "var(--heat)" : PALETTE[i % PALETTE.length]));  // the right axis is temperature
@@ -382,8 +390,9 @@ async function renderChart(el, panel) {
     g += `<polyline points="${pts}" fill="none" stroke="${colors[i]}" stroke-width="1.6" stroke-linejoin="round"/>`;
   });
   g += `<line class="xhair" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/>`;
-  el.plot = { series, colors, start, end, step: stepFor(240), left: L, right: R, width: svgW };
-  el.innerHTML = `<h3>${esc(panel.title)}</h3><svg width="100%" height="${H}" viewBox="0 0 ${svgW} ${H}">${g}</svg>
+  el.plot = { series, colors, start, end, step: stepFor(240, end - start), left: L, right: R, width: svgW };
+  const whole = win ? `<span class="muted"> · the whole run, ${esc(duration(end - start))}</span>` : "";
+  el.innerHTML = `<h3>${esc(panel.title)}${whole}</h3><svg width="100%" height="${H}" viewBox="0 0 ${svgW} ${H}">${g}</svg>
     <div class="legend">${series.map((s, i) => `<span><i style="background:${colors[i]}"></i>${esc(s.name || panel.title)}</span>`).join("")}</div>
     <div class="tip" hidden></div>`;
   if (el.lastPointer && el.matches(":hover")) hover(el, el.lastPointer);  // a redraw keeps the crosshair
@@ -404,11 +413,13 @@ function buildSections() {
 }
 async function renderSection(i) {
   await new Promise((done) => requestAnimationFrame(done));  // a just-opened section has its width after a frame
-  await Promise.all(SPEC.sections[i].panels.map((p, k) => renderChart($(`p${i}-${k}`), p)));
+  const win = SPEC.sections[i].title === "Training" ? state.window : null;  // the training section spans the run
+  await Promise.all(SPEC.sections[i].panels.map((p, k) => renderChart($(`p${i}-${k}`), p, win)));
 }
 async function renderCharts() {
   $("main").dataset.h = 220;
-  await renderChart($("main"), state.mode === "training" ? SPEC.training.main : SPEC.main);
+  const training = state.mode === "training";
+  await renderChart($("main"), training ? SPEC.training.main : SPEC.main, training ? state.window : null);
   await Promise.all([...document.querySelectorAll("details[open]")].map((d) => renderSection(+d.dataset.i)));
 }
 
@@ -473,5 +484,5 @@ async function main() {
 }
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
-  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText };
+  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText, runWindow };
 }

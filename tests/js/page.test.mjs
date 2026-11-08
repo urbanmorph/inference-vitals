@@ -100,3 +100,10 @@ test("a memory note stays short enough for a tile", () => {
   assert.equal(page.ofText(43.9e9, 51.5e9, ", machine"), "43.9 of 51.5 GB, machine");
   assert.equal(page.ofText(800e6, 51.5e9, " in use"), "800 MB of 51.5 GB in use");  // units differ: both shown
 });
+
+test("training charts span the run, with a little room either side, whatever the range buttons say", () => {
+  const { runWindow } = page;
+  assert.deepEqual(runWindow(1000, 1600, false, 9999), [970, 1630]);  // finished: start to end, 5% either side
+  assert.deepEqual(runWindow(1000, 1600, true, 2000), [950, 2050]);  // running: start to now
+  assert.equal(runWindow(null, 1600, false, 2000), null);  // nothing to fit: the chosen range
+});

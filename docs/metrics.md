@@ -59,6 +59,7 @@ Labels: `run_name`.
 | `vitals_training_step_seconds` | Seconds per step |
 | `vitals_training_tokens_total` | Tokens trained so far, a counter |
 | `vitals_training_peak_memory_bytes` | The trainer's peak memory |
+| `vitals_training_started_seconds` | When it started (the page's training charts span the run) |
 | `vitals_training_updated_seconds` | When it last reported |
 
 ## The machine

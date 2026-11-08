@@ -55,7 +55,9 @@ energy per *trained* token.
 
 **Learning?** reads Learning while validation loss still falls, Watch when it stops improving, and
 **Memorising** when it rises while training loss still falls: the model is learning its examples by heart
-rather than learning from them. The chart plots both losses against GPU temperature. A finished fine-tune
+rather than learning from them. The chart plots both losses against GPU temperature. The training charts
+(this one and the folded Training section) span the latest run from its start to its end, or to now while
+it runs, whatever range is chosen, so a one-minute run fills them as a two-hour one does. A finished fine-tune
 stays on the page, marked finished, with its last numbers, until a model run reports (or for a week).
 How to get a fine-tune on the page: [training.md](training.md).
 

@@ -77,6 +77,7 @@ details[open] summary::before { transform: rotate(90deg); }
 @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
 .grid2 .chart { margin: 0; }
 .sub.center { text-align: center; }
+.chart h3 .muted { color: var(--muted); font-weight: 400; }
 .models { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .idle { color: var(--muted); }
 .energy .ai { font-size: 13px; color: var(--text); }

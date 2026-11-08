@@ -38,6 +38,7 @@ class Training:
         self.vals: list[tuple[float, float | None]] = []  # (validation loss, training loss at that time)
         self.last_step_at = None
         self.updated = None
+        self.started = wall()  # so the page's training charts can span just this run
         self.was_read = threading.Event()  # set each time the page is read: finish() waits for the last one
 
     def _touch(self):
@@ -106,7 +107,10 @@ class Training:
         self.was_read.set()
         with self.lock:
             n = self.now
-            gauges = [("vitals_training_phase", self.phase)]
+            gauges = [
+                ("vitals_training_phase", self.phase),
+                ("vitals_training_started_seconds", self.started),
+            ]
             if self.step_part is not None:
                 gauges.append(("vitals_training_step_part", self.step_part))
             for key, name in (("step", "step"), ("loss", "loss"), ("learning_rate", "learning_rate"),

@@ -119,3 +119,8 @@ def test_a_trainer_that_times_its_own_steps_is_believed():
     run = training.Training("rf-1", clock=iter([0.0, 0.0]).__next__)
     run.step(5, loss=1.0, step_seconds=6.2)
     assert _values(run.render())["vitals_training_step_seconds"] == 6.2
+
+
+def test_a_run_says_when_it_started_so_its_charts_can_span_just_the_run():
+    run = training.Training("rf-1", wall=lambda: 1_700_000_000.0)
+    assert _values(run.render())["vitals_training_started_seconds"] == 1_700_000_000.0

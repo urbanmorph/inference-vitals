@@ -148,6 +148,9 @@ def _training(platform: str) -> dict:
             "epoch_query": t("epoch"),
             "epochs_query": t("epochs"),
             "step_seconds_query": t("step_seconds"),
+            # the run's span: its charts show just the run, however long or short
+            "started_query": t("started_seconds"),
+            "updated_query": t("updated_seconds"),
         },
         "tiles": tiles,
         "main": {
