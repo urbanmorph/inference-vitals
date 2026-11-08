@@ -1,0 +1,20 @@
+# inference-vitals
+
+> A local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA
+> GPUs: model speed and loss beside the machine's memory, heat, power and battery, on one timeline.
+> Prometheus plus its own page; everything on 127.0.0.1, numbers only. MIT.
+
+## Start here
+
+- [AGENTS.md](AGENTS.md): what the user wants, what to run, how to check it, symptoms and fixes
+- [README.md](README.md): what it is and the quick start
+
+## Docs
+
+- [docs/install.md](docs/install.md): install on a Mac or Linux, commands, troubleshooting, uninstall
+- [docs/connect.md](docs/connect.md): getting a model's numbers on the page (the proxy, the Python library)
+- [docs/training.md](docs/training.md): following a fine-tune (train, watch-training, the training library)
+- [docs/dashboard.md](docs/dashboard.md): every tile, training mode, energy, battery
+- [docs/metrics.md](docs/metrics.md): every metric name and what it means
+- [docs/limits.md](docs/limits.md): privacy, overhead, what it cannot show
+- [CONTRIBUTING.md](CONTRIBUTING.md): tests, checks, adding a trainer, where things are
