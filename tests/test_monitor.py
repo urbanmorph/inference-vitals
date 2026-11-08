@@ -2,53 +2,9 @@ import json
 import re
 
 import pytest
+from helpers import known_metric_names
 
-from inference_vitals import gpustat, metrics, monitor, sysstat, training
-
-
-def _known_metric_names():
-    m = metrics.Metrics(total=1, kv_per_token=1, labels={"model_name": "x"})
-    m.started({})
-    m.progress(tokens=1, writing_seconds=1.0, prompt_tokens=1)
-    writing = m.render()  # some numbers exist only while a page is being written
-    m.finished(
-        {
-            "ttft_s": 1.0,
-            "seconds": 2.0,
-            "prompt_tokens": 1,
-            "cached_tokens": 0,
-            "generation_tokens": 1,
-            "prompt_tps": 1.0,
-            "generation_tps": 1.0,
-            "active_memory_gb": 1.0,
-            "peak_memory_gb": 1.0,
-            "cache_memory_gb": 1.0,
-            "warm": False,
-            "thermal_warning": 0,
-            "cpu_speed_limit": 100,
-            "finish_reason": "length",
-            "parse_error": "x",
-            "over_context": True,
-            "context_used_tokens": 1,
-            "context_limit_tokens": 1,
-            "gpu_memory_limit_gb": 1.0,
-            "load_s": 1.0,
-        }
-    )
-    run = training.Training("t", total_steps=2, epochs=1)  # a fine-tune that has done everything once
-    run.step(
-        1, loss=1.0, learning_rate=1e-4, tokens_per_second=1.0, peak_memory_gb=1.0, epoch=1, trained_tokens=1
-    )
-    run.step(2, loss=0.9)
-    run.part("backward")
-    run.validate(1.0)
-    run.validate(0.9)
-    ours = {line.split("{")[0].split(" ")[0] for line in (writing + m.render() + run.render()).splitlines()}
-    ours |= set(sysstat.BATTERY)  # on laptops, on either platform
-    return {
-        monitor.MAC: ours | set(monitor.MACMON_METRICS) | set(sysstat.METRICS) | set(sysstat.MAC_ONLY),
-        monitor.LINUX: ours | set(gpustat.METRICS) | set(sysstat.METRICS) | set(sysstat.LINUX_ONLY),
-    }
+from inference_vitals import monitor
 
 
 def _all_panels(dashboard):
@@ -65,7 +21,7 @@ def _exprs(dashboard):
 
 @pytest.mark.parametrize("platform", monitor.PLATFORMS)
 def test_every_dashboard_query_uses_a_metric_that_exists_on_that_platform(platform):
-    known = _known_metric_names()[platform]
+    known = known_metric_names()[platform]
     for title, expr in _exprs(monitor.dashboard(platform)):
         names = set(re.findall(r"\b(?:vllm:|vitals_|macmon_)[A-Za-z0-9_:]+", expr))
         assert names, (title, expr)
@@ -418,9 +374,7 @@ def test_the_address_printed_matches_the_dashboard():
 def test_energy_per_token_is_the_model_s_share_of_power_over_tokens_everywhere(platform):
     q = monitor.HW[platform]["joules"]
     meter = monitor.HW[platform]["meter"]
-    assert q.startswith(
-        f"sum(avg_over_time((clamp_min({meter} - scalar(quantile_over_time(0.1, ({meter})[24h:1m]))"
-    )
+    assert q.startswith(f"sum(avg_over_time((clamp_min({meter} - scalar(max(vitals:idle_power_watts))")
     assert (
         monitor.RUN_ACTIVE in q
         and "vitals_training_phase" not in q
@@ -450,3 +404,16 @@ def test_energy_per_answer_token_counts_only_the_time_a_model_was_answering():
     assert (
         "vitals_current_phase" not in monitor.TRAIN_ACTIVE and "vitals_training_phase" in monitor.TRAIN_ACTIVE
     )
+
+
+@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+def test_idle_power_is_worked_out_once_a_minute_by_prometheus_not_on_every_chart_refresh(platform, tmp_path):
+    rules = monitor.rules_config(platform)
+    meter = monitor.HW[platform]["meter"]
+    assert "record: vitals:idle_power_watts" in rules and "interval: 1m" in rules
+    assert f"quantile_over_time(0.1, ({meter})[24h:1m])" in rules  # the 24-hour look-back, once a minute
+    assert "rule_files" in monitor.prometheus_config() and "rules.yml" in monitor.prometheus_config()
+    assert monitor.IDLE == "max(vitals:idle_power_watts)"
+    assert "[24h" not in monitor.ai_joules_per_token(meter)  # the chart reads the recorded number
+    monitor.write_configs(tmp_path, platform)
+    assert "vitals:idle_power_watts" in (tmp_path / "rules.yml").read_text()

@@ -15,7 +15,8 @@ Slowdown state, the GPU's own reasons for running below full clock speed, worst 
 import argparse
 import shutil
 import subprocess
-import time
+
+from inference_vitals.metrics import labels as label_text
 
 FIELDS = [
     "index",
@@ -62,10 +63,6 @@ def slowdown_state(active: dict) -> int:
     if active.get("sw_thermal_slowdown") or active.get("hw_thermal_slowdown"):
         return 2
     return 1 if active.get("sw_power_cap") else 0
-
-
-def _label(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _rows(text: str) -> list[list[str]]:
@@ -127,7 +124,7 @@ class NvidiaGpus:
 
     def render(self) -> str:
         return "".join(
-            f'{metric}{{gpu="{_label(lab["gpu"])}",name="{_label(lab["name"])}"}} {value}\n'
+            f"{metric}{label_text({'gpu': lab['gpu'], 'name': lab['name']})} {value}\n"
             for metric, lab, value in self.values()
         )
 
@@ -137,21 +134,13 @@ class NvidiaGpus:
         return json.dumps([{"metric": m, **lab, "value": v} for m, lab, v in self.values()])
 
 
-def available() -> bool:
-    return shutil.which("nvidia-smi") is not None
-
-
 def main():
-    from inference_vitals.metrics import serve
+    from inference_vitals.metrics import run_until_interrupt, serve
 
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, default=9091)
     server = serve(NvidiaGpus(smi=shutil.which("nvidia-smi") or "nvidia-smi"), p.parse_args().port)
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        server.shutdown()
+    run_until_interrupt(server)
 
 
 if __name__ == "__main__":

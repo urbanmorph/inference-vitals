@@ -22,6 +22,7 @@ No sudo, read each time Prometheus asks.
 import argparse
 import ctypes
 import ctypes.util
+import functools
 import os
 import pathlib
 import re
@@ -75,18 +76,25 @@ def swap_usage(text: str):
     return int(float(sizes["total"]) * 2**20), int(float(sizes["used"]) * 2**20)
 
 
+@functools.cache
+def _objc():
+    """The Objective-C runtime, loaded once: (process info object, a call returning a long, its selector)."""
+    objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+    ctypes.cdll.LoadLibrary(ctypes.util.find_library("Foundation"))
+    for f in (objc.objc_getClass, objc.sel_registerName):
+        f.restype, f.argtypes = ctypes.c_void_p, [ctypes.c_char_p]
+    send = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
+    send_long = ctypes.CFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
+    info = send(objc.objc_getClass(b"NSProcessInfo"), objc.sel_registerName(b"processInfo"))
+    return info, send_long, objc.sel_registerName(b"thermalState")
+
+
 def thermal_state():
     """NSProcessInfo.thermalState, 0-3, through the Objective-C runtime (no compiler, no packages);
     None if it cannot be read."""
     try:
-        objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
-        ctypes.cdll.LoadLibrary(ctypes.util.find_library("Foundation"))
-        for f in (objc.objc_getClass, objc.sel_registerName):
-            f.restype, f.argtypes = ctypes.c_void_p, [ctypes.c_char_p]
-        send = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
-        send_long = ctypes.CFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
-        info = send(objc.objc_getClass(b"NSProcessInfo"), objc.sel_registerName(b"processInfo"))
-        state = send_long(info, objc.sel_registerName(b"thermalState"))
+        info, send_long, selector = _objc()
+        state = send_long(info, selector)
     except (OSError, TypeError, AttributeError):
         return None
     return state if state in (0, 1, 2, 3) else None
@@ -150,11 +158,16 @@ def linux_battery(root=pathlib.Path("/sys/class/power_supply")):
     return None
 
 
+MAC_COMMANDS = {
+    "vm_stat": ["vm_stat"],
+    "sysctl": ["sysctl", "-n", "kern.memorystatus_level", "vm.swapusage"],  # both in one call, one per line
+    "ioreg": ["ioreg", "-rn", "AppleSmartBattery"],
+}
+BATTERY_EVERY = 30  # seconds: a battery changes slowly, and ioreg is the slowest of the three
+
+
 def _mac_read(name: str) -> str:
-    cmd = {"vm_stat": ["vm_stat"], "ioreg": ["ioreg", "-rn", "AppleSmartBattery"]}.get(
-        name, ["sysctl", "-n", name]
-    )
-    return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+    return subprocess.run(MAC_COMMANDS[name], capture_output=True, text=True, check=False).stdout
 
 
 class _Exporter:
@@ -168,20 +181,28 @@ class _Exporter:
 
 
 class MacHost(_Exporter):
-    def __init__(self, read=_mac_read, thermal=thermal_state):
-        self.read, self.thermal = read, thermal
+    def __init__(self, read=_mac_read, thermal=thermal_state, clock=time.monotonic):
+        self.read, self.thermal, self.clock = read, thermal, clock
+        self.battery, self.battery_at = None, None
+
+    def _battery(self) -> dict:
+        now = self.clock()
+        if self.battery_at is None or now - self.battery_at >= BATTERY_EVERY:
+            self.battery, self.battery_at = mac_battery(self.read("ioreg")) or {}, now
+        return self.battery
 
     def values(self) -> dict:
         v = {f"vitals_host_{k}": n for k, n in parse_vm_stat(self.read("vm_stat")).items()}
-        free = memory_free_percent(self.read("kern.memorystatus_level"))
+        level, _, swap = self.read("sysctl").partition("\n")
+        free = memory_free_percent(level)
         if free is not None:
             v["vitals_host_memory_free_percent"] = free
-        total, used = swap_usage(self.read("vm.swapusage"))
+        total, used = swap_usage(swap)
         v["vitals_host_swap_total_bytes"], v["vitals_host_swap_used_bytes"] = total, used
         state = self.thermal()
         if state is not None:
             v["vitals_host_thermal_state"] = state
-        return {**v, **(mac_battery(self.read("ioreg")) or {})}
+        return {**v, **self._battery()}
 
 
 def _fields(text: str) -> dict:
@@ -251,16 +272,12 @@ def host():
 
 
 def main():
-    from inference_vitals.metrics import serve
+    from inference_vitals.metrics import run_until_interrupt, serve
 
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, default=9092)
     server = serve(host(), p.parse_args().port)
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        server.shutdown()
+    run_until_interrupt(server)
 
 
 if __name__ == "__main__":

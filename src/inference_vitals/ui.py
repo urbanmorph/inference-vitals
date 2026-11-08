@@ -17,16 +17,17 @@ import http.server
 import json
 import pathlib
 import threading
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from inference_vitals import monitor
+from inference_vitals import monitor, training
+from inference_vitals.metrics import run_until_interrupt
 from inference_vitals.monitor import (
     ACTIVE,
     CONTEXT,
     HW,
+    IDLE,
     LINUX,
     MAC,
     REPO,
@@ -34,7 +35,6 @@ from inference_vitals.monitor import (
     SWAP_RATE,
     TRAIN_ACTIVE,
     TTFT_Q,
-    idle_power,
 )
 
 PAGE = pathlib.Path(__file__).parent / "page"
@@ -70,9 +70,8 @@ def _energy(platform: str) -> dict:
 
     return {
         "meter": "whole Mac" if platform == MAC else "GPUs only",
-        "power_query": power,
         "total_query": f"sum_over_time(({power})[{{range}}:{{step}}s]) * {{step}} / 3600",
-        "idle_query": idle_power(power),
+        "idle_query": IDLE,  # recorded once a minute by Prometheus
         "ai_query": ai(ACTIVE),  # the band: model runs and fine-tunes together
         "ai_run_query": ai(RUN_ACTIVE),  # Energy/token: only while a model answered
         "ai_training_query": ai(TRAIN_ACTIVE),  # Energy/trained token: only while a fine-tune trained
@@ -96,10 +95,8 @@ def _tiles(platform: str) -> dict:
             "used_query": "sum(vitals_gpu_memory_used_bytes)",
             "limit_query": "sum(vitals_gpu_memory_total_bytes)",
         }
-    done = "(max(vitals_pages_done) + max(vitals_pages_already_answered))"
     run = [
-        {"title": "Progress", "kind": "progress", "query": f"{done} / max(vitals_pages_total)",
-         "done_query": done, "total_query": "max(vitals_pages_total)"},
+        {"title": "Progress", "kind": "progress", "done_query": PAGES_DONE, "total_query": PAGES_TOTAL},
         {"title": "Writing now", "kind": "speed", "unit": "tok/s", "query": "max(vitals_current_generation_tps)",
          "max_query": "max(quantile_over_time(0.99, vitals_current_generation_tps[{range}]))"},
         {"title": "TTFT (median)", "kind": "zones", "unit": "s", "query": f"max({TTFT_Q.format(q=0.5)})",
@@ -142,12 +139,12 @@ def _training(platform: str) -> dict:
     latest = "and on(run_name, run_id) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
     t = ("max(last_over_time(vitals_training_{}[7d]) " + latest + ")").format
     tiles = [
-        {"title": "Progress", "kind": "progress", "of": "steps", "query": f"{t('step')} / {t('total_steps')}",
-         "done_query": t("step"), "total_query": t("total_steps")},
+        {"title": "Progress", "kind": "progress", "of": "steps", "done_query": t("step"),
+         "total_query": t("total_steps")},
         {"title": "Train loss", "kind": "spark", "unit": "none", "query": t("loss")},
         {"title": "Val loss", "kind": "spark", "unit": "none", "query": t("val_loss"),
          "best_query": t("val_loss_best")},
-        {"title": "Learning?", "kind": "steps", "query": t("verdict"), "names": ["Learning", "Watch", "Memorising"]},
+        {"title": "Learning?", "kind": "steps", "query": t("verdict"), "names": training.VERDICT_NAMES},
         {"title": "Tokens/s", "kind": "speed", "unit": "tok/s", "query": t("tokens_per_second"),
          "max_query": "max(quantile_over_time(0.99, vitals_training_tokens_per_second[{range}]))"},
         {"title": "Learning rate", "kind": "plain", "unit": "none", "query": t("learning_rate")},
@@ -159,9 +156,9 @@ def _training(platform: str) -> dict:
         "band": {
             # the latest run's phase (0 once it has finished), with its name
             "phase_query": f"last_over_time(vitals_training_phase[7d]) {latest}",
-            "names": ["Idle", "Step", "Validate", "Save"],
+            "names": [k.capitalize() for k in training.PHASES],  # Idle, Step, Validate, Save
             "part_query": t("step_part"),
-            "parts": ["", "read", "backward", "write"],
+            "parts": ["", *training.PARTS],  # 0: none reported
             "step_query": t("step"),
             "total_query": t("total_steps"),
             "epoch_query": t("epoch"),
@@ -208,6 +205,8 @@ def _lead_charts(platform: str) -> dict:
     }
 
 
+PAGES_DONE = "max(vitals_pages_done) + max(vitals_pages_already_answered)"  # one spelling: asked once
+PAGES_TOTAL = "max(vitals_pages_total)"
 TAB = {
     "Speed detail": "Speed",
     "Context and limits": "Context",
@@ -271,9 +270,9 @@ def spec(platform: str) -> dict:
         "ranges": RANGES,
         "running": {
             "phase_query": "vitals_current_phase",
-            "names": ["Idle", "Reading (prefill)", "Writing (decode)"],
-            "done_query": "max(vitals_pages_done) + max(vitals_pages_already_answered)",
-            "total_query": "max(vitals_pages_total)",
+            "names": monitor.PHASE_NAMES,
+            "done_query": PAGES_DONE,
+            "total_query": PAGES_TOTAL,
             "seconds_per_page_query": "sum(rate(vllm:e2e_request_latency_seconds_sum[10m])) / "
             "sum(rate(vllm:e2e_request_latency_seconds_count[10m]))",
         },
@@ -354,11 +353,7 @@ def main():
     p.add_argument("--prometheus", default=f"http://127.0.0.1:{monitor.PROMETHEUS}")
     a = p.parse_args()
     server = serve(a.port, a.platform, a.prometheus)
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        server.shutdown()
+    run_until_interrupt(server)
 
 
 if __name__ == "__main__":

@@ -21,11 +21,12 @@ import json
 import threading
 import time
 
-from inference_vitals.metrics import DEFAULT_PORT, serve
+from inference_vitals.metrics import DEFAULT_PORT, labels, serve
 
 PHASES = {"idle": 0, "step": 1, "validate": 2, "save": 3}
 PARTS = {"read": 1, "backward": 2, "write": 3}
 LEARNING, WATCH, MEMORISING = 0, 1, 2
+VERDICT_NAMES = ["Learning", "Watch", "Memorising"]  # by the numbers above, for the page and Grafana
 RISE = 0.02  # validation loss this far above its best (2%) counts as rising, not noise
 
 
@@ -124,11 +125,9 @@ class Training:
                     self.wall(),
                 ),  # read time: a run that stops answering goes stale
             ]
-            for key, name in (("step", "step"), ("loss", "loss"), ("learning_rate", "learning_rate"),
-                              ("tokens_per_second", "tokens_per_second"), ("step_seconds", "step_seconds"),
-                              ("epoch", "epoch")):  # fmt: skip
+            for key in ("step", "loss", "learning_rate", "tokens_per_second", "step_seconds", "epoch"):
                 if key in n:
-                    gauges.append((f"vitals_training_{name}", n[key]))
+                    gauges.append((f"vitals_training_{key}", n[key]))
             if "trained_tokens" in n:  # a counter: energy per trained token is power over its increase
                 gauges.append(("vitals_training_tokens_total", n["trained_tokens"]))
             if "peak_memory_gb" in n:
@@ -145,8 +144,10 @@ class Training:
                 gauges.append(("vitals_training_verdict", verdict))
             if self.updated is not None:
                 gauges.append(("vitals_training_updated_seconds", self.updated))
-            labels = f'run_name="{_escaped(self.name)}",run_id="{self.started:.0f}"'  # the id keeps same-named runs apart
-            return "".join(f"{name}{{{labels}}} {value}\n" for name, value in gauges)
+            tags = labels(
+                {"run_name": self.name, "run_id": f"{self.started:.0f}"}
+            )  # the id keeps same-named runs apart
+            return "".join(f"{name}{tags} {value}\n" for name, value in gauges)
 
     def snapshot(self) -> str:
         with self.lock:
@@ -154,11 +155,6 @@ class Training:
             if self.vals:
                 out["val_loss"] = self.vals[-1][0]
             return json.dumps(out)
-
-
-def _escaped(value: str) -> str:
-    """A label value as Prometheus's text format needs it: backslash, quote and newline escaped."""
-    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
 def start(name: str, total_steps=None, epochs=None, port: int = DEFAULT_PORT) -> Training:

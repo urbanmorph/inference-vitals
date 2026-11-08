@@ -87,3 +87,12 @@ On `127.0.0.1:9092` (both platforms) and, on Linux, `127.0.0.1:9091` (the NVIDIA
 | `vitals_gpu_freq_mhz`, `vitals_gpu_memory_freq_mhz` | Linux, per GPU: clocks |
 | `vitals_gpu_fan_ratio` | Linux, per GPU: fan speed |
 | `vitals_gpu_slowdown_state` | Linux, per GPU: 0 none, 1 power cap, 2 thermal, 3 hardware |
+
+## Worked out by Prometheus
+
+A recording rule (`rules.yml`, written by `start`) works these out once a minute, so the charts read one
+number instead of repeating a costly look-back on every refresh.
+
+| Metric | Meaning |
+| --- | --- |
+| `vitals:idle_power_watts` | The machine's usual idle draw: the low end (10th percentile) of the last day's power |

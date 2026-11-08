@@ -63,6 +63,13 @@ IDLE, READING, WRITING = 0, 1, 2
 DEFAULT_PORT = 8400  # what the dashboard's Prometheus reads; 127.0.0.1 only
 
 
+def labels(values: dict) -> str:
+    """Prometheus labels, escaped as its text format needs (backslash, quote, newline): a model or run name
+    can hold anything, and one bad character would make the whole page unreadable. Empty for none."""
+    esc = lambda v: str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return "{" + ",".join(f'{k}="{esc(v)}"' for k, v in values.items()) + "}" if values else ""
+
+
 def kv_bytes_per_token(config: dict) -> int:
     """Bytes of KV cache each token adds: 2 (key, value) x layers that keep a cache x KV heads x head size
     x 2 bytes (16-bit cache). Linear-attention layers keep a fixed-size state instead, so are not counted."""
@@ -160,9 +167,7 @@ class Metrics:
         return (self.last.get("prompt_tokens", 0) + self.last.get("generation_tokens", 0)) * self.kv_per_token
 
     def _line(self, name, value, **extra) -> str:
-        labels = {**self.labels, **extra}
-        tags = ",".join(f'{k}="{v}"' for k, v in labels.items())
-        return f"{name}{{{tags}}} {value}" if tags else f"{name} {value}"
+        return f"{name}{labels({**self.labels, **extra})} {value}"
 
     def render(self) -> str:
         with self.lock:
@@ -235,6 +240,16 @@ class Metrics:
                     **self.sticky,
                 }
             )
+
+
+def run_until_interrupt(*servers, sleep=time.sleep):
+    """Keep the process (and its servers' threads) alive until Ctrl-C, then stop every server."""
+    try:
+        while True:
+            sleep(3600)
+    except KeyboardInterrupt:
+        for s in servers:
+            s.shutdown()
 
 
 def serve(source, port: int):

@@ -23,7 +23,7 @@ import threading
 import time
 import urllib.parse
 
-from inference_vitals.metrics import DEFAULT_PORT, Metrics
+from inference_vitals.metrics import DEFAULT_PORT, Metrics, run_until_interrupt
 from inference_vitals.metrics import serve as serve_metrics
 
 PROXY_PORT = 8401
@@ -285,9 +285,4 @@ def main(argv=None):
         f"Numbers: http://127.0.0.1:{args.metrics_port}/metrics  (Ctrl-C to stop)",
         flush=True,
     )
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        server.shutdown()
-        numbers.shutdown()
+    run_until_interrupt(server, numbers)

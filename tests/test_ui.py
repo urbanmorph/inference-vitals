@@ -6,11 +6,11 @@ import urllib.parse
 import urllib.request
 
 import pytest
-from test_monitor import _known_metric_names
+from helpers import known_metric_names
 
 from inference_vitals import monitor, ui
 
-NAME = re.compile(r"\b(?:vllm:|vitals_|macmon_)[A-Za-z0-9_:]+")
+NAME = re.compile(r"\b(?:vllm:|vitals_|vitals:|macmon_)[A-Za-z0-9_:]+")
 
 
 def _queries(spec):
@@ -40,7 +40,7 @@ def _queries(spec):
 
 @pytest.mark.parametrize("platform", monitor.PLATFORMS)
 def test_every_query_on_the_page_uses_a_metric_that_exists_on_that_platform(platform):
-    known = _known_metric_names()[platform]
+    known = known_metric_names()[platform]
     for title, q in _queries(ui.spec(platform)):
         names = set(NAME.findall(q))
         assert names and names <= known, (platform, title, names - known)
@@ -89,7 +89,7 @@ def test_energy_adds_up_power_over_the_range_and_counts_only_the_ai_above_idle()
     assert total == "sum_over_time((max(macmon_sys_power_watts))[1h:15s]) * 15 / 3600"
     ai = fill(e["ai_query"], "6h", 60, base=12.5)
     assert "- 12.5" in ai and "vitals_current_phase" in ai and "[6h:60s]" in ai and ai.endswith("* 60 / 3600")
-    assert "quantile_over_time(0.1" in e["idle_query"]
+    assert e["idle_query"] == monitor.IDLE  # recorded once a minute (monitor.rules_config)
     assert ui.spec(monitor.LINUX)["energy"]["meter"] == "GPUs only"
 
 
@@ -218,9 +218,9 @@ def test_the_battery_time_comes_from_the_battery_itself():
 def test_a_finished_fine_tune_stays_readable_with_its_last_numbers():
     t = ui.spec(monitor.MAC)["training"]
     for tile in t["tiles"]:
-        assert tile["query"].startswith("max(last_over_time(vitals_training_") or "/" in tile["query"], tile[
-            "title"
-        ]
+        for k, q in tile.items():
+            if k.endswith("query") and k != "max_query":  # max_query: the range's top, not the last value
+                assert q.startswith("max(last_over_time(vitals_training_"), (tile["title"], k)
     band = t["band"]
     assert "last_over_time(vitals_training_phase[7d])" in band["phase_query"]
     assert "topk(1" in band["phase_query"]  # only the latest run, not every run of the week
@@ -232,7 +232,9 @@ def test_every_training_number_is_the_latest_runs_never_an_older_ones():
     t = ui.spec(monitor.MAC)["training"]
     latest = "and on(run_name, run_id) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
     for tile in t["tiles"]:
-        assert latest in tile["query"], tile["title"]
+        for k, q in tile.items():
+            if k.endswith("query") and k != "max_query":
+                assert latest in q, (tile["title"], k)
     for k, q in t["band"].items():
         if k.endswith("query"):
             assert latest in q, k
@@ -292,3 +294,46 @@ def test_each_per_token_energy_counts_only_its_own_kind_of_work():
     e = ui.spec(monitor.MAC)["energy"]
     assert monitor.ACTIVE in e["ai_query"]  # the band's AI share: model runs and fine-tunes together
     assert monitor.RUN_ACTIVE in e["ai_run_query"] and monitor.TRAIN_ACTIVE in e["ai_training_query"]
+
+
+def test_progress_is_worked_out_on_the_page_from_two_numbers_it_asks_for_anyway():
+    for platform in monitor.PLATFORMS:
+        spec = ui.spec(platform)
+        tiles = spec["tiles"]["run"] + spec["training"]["tiles"]
+        for tile in (t for t in tiles if t["kind"] == "progress"):
+            assert "query" not in tile, tile["title"]  # done / total, divided in the browser
+        run_tile = next(t for t in spec["tiles"]["run"] if t["kind"] == "progress")
+        assert run_tile["done_query"] == spec["running"]["done_query"]  # one spelling: asked once per refresh
+        assert run_tile["total_query"] == spec["running"]["total_query"]
+
+
+@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+def test_the_page_and_grafana_colour_each_tile_at_the_same_levels(platform):
+    grafana = {}
+    for p in monitor.dashboard(platform)["panels"]:
+        if p["type"] == "stat":
+            steps = [
+                s["value"]
+                for s in p["fieldConfig"]["defaults"]["thresholds"]["steps"]
+                if s["value"] is not None
+            ]
+            grafana[p["title"]] = sorted(steps)
+    spec = ui.spec(platform)
+    for tile in spec["tiles"]["run"] + spec["tiles"]["machine"]:
+        if "warn" in tile:
+            scale = tile.get("scale", 1)
+            assert sorted([tile["warn"] / scale, tile["bad"] / scale]) == grafana[tile["title"]], tile[
+                "title"
+            ]
+
+
+def test_state_names_come_from_the_code_that_defines_the_states():
+    from inference_vitals import metrics, training
+
+    spec = ui.spec(monitor.MAC)
+    assert spec["running"]["names"] == monitor.PHASE_NAMES
+    band = spec["training"]["band"]
+    assert len(band["names"]) == len(training.PHASES) and len(band["parts"]) == len(training.PARTS) + 1
+    learning = next(t for t in spec["training"]["tiles"] if t["title"] == "Learning?")
+    assert len(learning["names"]) == 3 and learning["names"][training.MEMORISING] == "Memorising"
+    assert monitor.PHASE_NAMES[metrics.WRITING] == "Writing (decode)"

@@ -21,28 +21,34 @@ async function prom(path, params) {
   return body.data.result;
 }
 const instant = (query) => prom("/api/v1/query", { query }).catch(() => []);
-async function one(query) {
+// within one refresh, a query asked by two tiles (or a tile and the band) goes out once
+const sharedAsk = (cache, key, ask) => { if (!cache.has(key)) cache.set(key, ask()); return cache.get(key); };
+let asking = new Map();
+const one = (query) => sharedAsk(asking, query, () => oneNow(query));
+async function oneNow(query) {
   const r = await instant(query);
   const v = r.length ? parseFloat(r[0].value[1]) : NaN;
   return Number.isFinite(v) ? v : null;
 }
 const stepFor = (points, span = chosen().seconds) => Math.max(span < 600 ? 1 : 5, Math.round(span / points));
 function rangeQuery(query, points = 240, win = null) {  // win: [start, end] instead of the chosen range
-  const [start, end] = win || [Date.now() / 1000 - chosen().seconds, Date.now() / 1000];
+  const [start, end] = win || rangeWindow();
   return prom("/api/v1/query_range", { query, start, end, step: stepFor(points, end - start) }).catch(() => []);
 }
 const STALE = 90;  // seconds unread before a run that says it is training counts as stopped (killed)
 function runState(phase, alive, now) {  // "training", "stale", "finished" or "none"
-  if (phase === null || phase === undefined) return "none";
+  if (phase == null) return "none";
   if (phase <= 0) return "finished";
   return alive !== null && alive !== undefined && now - alive <= STALE ? "training" : "stale";
 }
 function runWindow(start, end, running, now) {  // a fine-tune's charts: its whole run, 5% room either side
-  if (start === null || start === undefined) return null;
-  const last = running || end === null || end === undefined ? now : end, pad = (last - start) * 0.05 || 30;
+  if (start == null) return null;
+  const last = running || end == null ? now : end, pad = (last - start) * 0.05 || 30;
   return [start - pad, last + pad];
 }
-const fill = (q) => q.replaceAll("{range}", range);
+const rangeWindow = () => [Date.now() / 1000 - chosen().seconds, Date.now() / 1000];  // the chosen range, ending now
+// a query's placeholders: {range} always, {step} and {base} for the energy sums
+const fill = (q, step = "", base = "") => q.replaceAll("{range}", range).replaceAll("{step}", step).replaceAll("{base}", base);
 // Answers about the whole range (a top speed, a trend) change slowly: asked at most every CHARTS_EVERY
 const memo = new Map();
 function slow(key, ask) {
@@ -65,7 +71,7 @@ function axisText(v, unit) {  // axis labels: always compact, so they fit the ma
   return plain && Math.abs(v) >= 1000 ? `${compact(v, () => 0, 1000)}${f.u ? ` ${f.u}` : ""}` : f.u ? `${f.n} ${f.u}` : f.n;
 }
 function fmt(v, unit, digits) {
-  if (v === null || v === undefined || !Number.isFinite(v)) return { n: "–", u: "" };
+  if (v == null || !Number.isFinite(v)) return { n: "–", u: "" };
   const d = (x) => (digits !== undefined ? digits : Math.abs(x) >= 100 ? 0 : Math.abs(x) >= 10 ? 1 : 2);
   const scaled = (x, steps) => { let i = 0; while (Math.abs(x) >= 1000 && i < steps.length - 1) { x /= 1000; i++; } return [x, steps[i]]; };
   switch (unit) {
@@ -157,10 +163,11 @@ async function renderTile(t) {
   const scaled = v === null ? null : v * (t.scale || 1);
   const tn = tone(scaled, t);
   switch (t.kind) {
-    case "progress": {
+    case "progress": {  // done / total, both asked anyway
       const [done, total] = await Promise.all([one(t.done_query), one(t.total_query)]);
-      return head(t.title, scaled === null ? null : scaled * 100, "%", scaled === null ? "plain" : "ok", 0)
-        + sub(total ? `${done} of ${total} ${t.of || "pages"}` : "no run reporting") + bar(scaled * 100, "ok");
+      const share = total && done !== null ? done / total : null;
+      return head(t.title, share === null ? null : share * 100, "%", share === null ? "plain" : "ok", 0)
+        + sub(total ? `${done} of ${total} ${t.of || "pages"}` : "no run reporting") + bar((share || 0) * 100, "ok");
     }
     case "speed": {
       const top = await slow(`${range} ${t.max_query}`, () => one(fill(t.max_query))), max = niceMax(Math.max(top || 0, v || 0));
@@ -233,7 +240,7 @@ function clockText(date, locale, timeZone) {  // "23:01:05 IST": local time, wit
 // joules per token: the energy of that kind of work only (answering, or training) over its own tokens
 function perToken(e, mode) {
   const [wh, tokens] = mode === "training" ? [e.aiTraining, e.trained] : [e.aiRun, e.tokens];
-  return wh === null || wh === undefined || !tokens ? null : +((wh * 3600) / tokens).toFixed(4);
+  return wh == null || !tokens ? null : +((wh * 3600) / tokens).toFixed(4);
 }
 
 // ---- which run the page is about, and the battery ----
@@ -248,7 +255,7 @@ async function decideMode() {
   $("band-label").textContent = state.mode === "training" ? "Training" : "Running";
 }
 function batteryText(b, left) {  // a laptop's battery: on power its charge; on battery the time left at its draw now
-  if (b.percent === null || b.percent === undefined) return { hidden: true, text: "", warn: false };  // no battery
+  if (b.percent == null) return { hidden: true, text: "", warn: false };  // no battery
   if (b.onPower) return { hidden: false, text: `🔌 ${Math.round(b.percent)}% · on power`, warn: false };
   if (!b.draw || !b.wh) return { hidden: false, text: `🔋 ${Math.round(b.percent)}%`, warn: false };
   const secs = (b.wh / b.draw) * 3600, warn = left !== null && left !== undefined && secs < left;
@@ -311,7 +318,7 @@ async function renderRunning() {
 }
 async function renderEnergy() {
   const e = SPEC.energy, step = chosen().step;
-  const filled = (q, base) => q.replaceAll("{range}", range).replaceAll("{step}", step).replaceAll("{base}", base);
+  const filled = (q, base) => fill(q, step, base);
   const base = await one(e.idle_query);
   const ai_ = (q) => (base === null ? null : one(filled(q, base)));
   const [total, ai, aiRun, aiTraining, tokens, trained] = await Promise.all([
@@ -381,7 +388,7 @@ async function renderChart(el, panel, win = null) {
     el.innerHTML = `<h3>${esc(panel.title)}${star(el, panel)}</h3><div class="empty">nothing recorded ${win ? "in this run" : `in the last ${chosen().label}`}</div>`;
     return;
   }
-  const [start, end] = win || [Date.now() / 1000 - chosen().seconds, Date.now() / 1000];
+  const [start, end] = win || rangeWindow();
   const hasRight = series.some((s) => s.axis === "right"), L = 64, R = hasRight ? 56 : 12, T = 8, B = 22;
   const bounds = (axis) => { const v = series.filter((s) => s.axis === axis).flatMap((s) => s.points.map((p) => p[1]));
     return v.length ? [Math.min(0, ...v), niceMax(Math.max(...v))] : [0, 1]; };
@@ -531,11 +538,12 @@ function rateBox() {
 let last = { charts: 0, energy: 0 };
 async function refresh(all = false) {
   if (document.hidden && !all) return;  // nothing to draw while the tab is not visible
+  asking = new Map();  // a fresh refresh asks again
   const now = Date.now(), was = state.mode;
   await decideMode();
   if (state.mode !== was) { all = true; if (view === "favourites") buildView(); }  // its favourites change with it
-  const jobs = [renderRunning().then(renderBattery), trainingWindow()];
-  if (all || now - last.energy >= ENERGY_EVERY) { last.energy = now; jobs.push(renderEnergy()); }
+  const jobs = [renderRunning(), trainingWindow()];
+  if (all || now - last.energy >= ENERGY_EVERY) { last.energy = now; jobs.push(renderEnergy(), renderBattery()); }  // both change slowly
   await Promise.all(jobs);
   await renderTiles();  // after energy, which Energy/token uses
   if (all || now - last.charts >= CHARTS_EVERY) { last.charts = now; await renderCharts(); }
@@ -562,5 +570,5 @@ async function main() {
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
   module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText, runWindow,
-    favouritesFor, toggled, viewFrom, chartHeight, perToken, runState, starred, addressFor };
+    favouritesFor, toggled, viewFrom, chartHeight, perToken, runState, starred, addressFor, sharedAsk };
 }

@@ -5,7 +5,7 @@ import pathlib
 import re
 
 import pytest
-from test_monitor import _known_metric_names
+from helpers import known_metric_names
 
 from inference_vitals import monitor
 
@@ -35,11 +35,13 @@ def test_every_link_to_a_file_or_heading_in_the_repo_resolves(doc):
 
 
 def test_the_metric_list_and_the_code_agree_both_ways():
-    known = _known_metric_names()
+    known = known_metric_names()
     exported = {
         HISTOGRAM.sub("", n) for n in known[monitor.MAC] | known[monitor.LINUX] if not n.startswith("macmon_")
     }
-    listed = set(re.findall(r"`((?:vitals_|vllm:)[a-z0-9_:]+)`", (ROOT / "docs" / "metrics.md").read_text()))
+    listed = set(
+        re.findall(r"`((?:vitals_|vitals:|vllm:)[a-z0-9_:]+)`", (ROOT / "docs" / "metrics.md").read_text())
+    )
     assert exported - listed == set(), "exported but not in docs/metrics.md"
     assert listed - exported == set(), "in docs/metrics.md but not exported"
 

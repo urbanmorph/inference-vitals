@@ -177,3 +177,12 @@ test("the address written on a tab click has the current range, theme and tab", 
     "?range=7d&x=1&theme=dark&view=memory");
   assert.equal(addressFor(new URLSearchParams(""), { range: "1h", theme: null, view: "favourites" }), "?range=1h&view=favourites");
 });
+
+test("a query asked twice in one refresh goes out once", async () => {
+  const { sharedAsk } = page;
+  const cache = new Map();
+  let calls = 0;
+  const ask = async () => { calls += 1; return 7; };
+  const [a, b] = await Promise.all([sharedAsk(cache, "q", ask), sharedAsk(cache, "q", ask)]);
+  assert.equal(a, 7); assert.equal(b, 7); assert.equal(calls, 1);
+});

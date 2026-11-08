@@ -204,3 +204,30 @@ def test_a_model_run_says_when_it_last_changed_so_the_page_can_tell_it_from_trai
     assert "vitals_run_updated_seconds" not in m.render()  # nothing has happened yet
     m.started({"id": "a"})
     assert "vitals_run_updated_seconds 1700000123.0" in m.render()
+
+
+def test_a_model_name_with_a_quote_cannot_break_the_numbers_page():
+    m = metrics.Metrics(total=1, kv_per_token=0, labels={"model_name": 'my "best" model\\v2'})
+    assert 'model_name="my \\"best\\" model\\\\v2"' in m.render()
+
+
+def test_one_label_writer_serves_every_exporter():
+    assert metrics.labels({"a": 'x"y', "b": "1\n2"}) == '{a="x\\"y",b="1\\n2"}'
+    assert metrics.labels({}) == ""
+
+
+def test_one_helper_keeps_a_server_up_until_ctrl_c_then_stops_every_server():
+    stopped = []
+
+    class Server:
+        def __init__(self, name):
+            self.name = name
+
+        def shutdown(self):
+            stopped.append(self.name)
+
+    def interrupt(_seconds):
+        raise KeyboardInterrupt
+
+    metrics.run_until_interrupt(Server("page"), Server("numbers"), sleep=interrupt)
+    assert stopped == ["page", "numbers"]

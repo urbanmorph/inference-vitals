@@ -76,7 +76,13 @@ def test_slowdown_state_names_the_worst_reason():
 
 
 def test_a_quote_in_a_gpu_name_cannot_break_the_numbers_page():
-    assert gpustat._label('A "B" \\C') == 'A \\"B\\" \\\\C'
+    def run(args):
+        query = next(a for a in args if a.startswith("--query-gpu="))
+        return (
+            (0, REASONS, "") if "reasons" in query else (0, GPUS.replace("NVIDIA RTX A2000", 'A "B" \\C'), "")
+        )
+
+    assert 'name="A \\"B\\" \\\\C"' in gpustat.NvidiaGpus(run=run).render()
 
 
 def test_every_metric_it_can_publish_is_listed():

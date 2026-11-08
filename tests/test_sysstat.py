@@ -28,8 +28,7 @@ def _mac(thermal):
     return sysstat.MacHost(
         read=lambda cmd: {
             "vm_stat": VM,
-            "kern.memorystatus_level": "77",
-            "vm.swapusage": "total = 1024.00M  used = 512.00M  free = 512.00M",
+            "sysctl": "77\ntotal = 1024.00M  used = 512.00M  free = 512.00M\n",  # one call, both values
             "ioreg": "",  # no battery
         }[cmd],
         thermal=lambda: thermal,
@@ -200,3 +199,26 @@ def test_a_negative_current_printed_as_an_unsigned_number_is_read_as_negative():
     unsigned = str(2**64 - 2000)  # how ioreg often prints -2000 mA
     b = sysstat.mac_battery(IOREG.replace('"InstantAmperage" = -2000', f'"InstantAmperage" = {unsigned}'))
     assert b["vitals_battery_draw_watts"] == 24.8
+
+
+def test_a_mac_read_starts_two_processes_and_the_battery_is_read_every_30_seconds():
+    reads = []
+    now = iter([0, 10, 40])
+    base = _mac(0).read
+    host = sysstat.MacHost(
+        read=lambda cmd: reads.append(cmd) or base(cmd), thermal=lambda: 0, clock=lambda: next(now)
+    )
+    host.render()
+    assert reads == ["vm_stat", "sysctl", "ioreg"]
+    reads.clear()
+    host.render()  # 10 s later: the battery's last reading is still fresh
+    assert reads == ["vm_stat", "sysctl"]
+    reads.clear()
+    host.render()  # 40 s: read it again
+    assert reads == ["vm_stat", "sysctl", "ioreg"]
+
+
+def test_the_thermal_state_reader_loads_macos_libraries_once():
+    sysstat.thermal_state()
+    sysstat.thermal_state()
+    assert sysstat._objc.cache_info().misses == 1

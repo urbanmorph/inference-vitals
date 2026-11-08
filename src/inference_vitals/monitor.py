@@ -72,6 +72,7 @@ MACMON_METRICS = [
 def prometheus_config() -> str:
     return f"""global:
   scrape_interval: 5s
+rule_files: [rules.yml]
 scrape_configs:
   - job_name: inference-vitals
     static_configs: [{{targets: ["127.0.0.1:{RUNNER}"]}}]
@@ -258,13 +259,27 @@ ACTIVE = f"clamp_max({RUN_ACTIVE} + {TRAIN_ACTIVE}, 1)"  # either: the AI's shar
 
 
 def idle_power(meter: str) -> str:
-    """Sampled every minute, so a fresh install has a baseline within a minute (every 5 left it empty for
-    up to 5 minutes, and with it the model's share of energy)."""
+    """The machine's usual idle draw: the low end (10th percentile) of the last day's power, sampled every
+    minute, so a fresh install has a baseline within a minute. Prometheus works it out once a minute as
+    vitals:idle_power_watts (rules_config), since a look-back over a day is costly to repeat on each chart."""
     return f"quantile_over_time(0.1, ({meter})[24h:1m])"
 
 
+IDLE = "max(vitals:idle_power_watts)"  # idle_power, as Prometheus records it once a minute
+
+
+def rules_config(platform: str) -> str:
+    return f"""groups:
+  - name: inference-vitals
+    interval: 1m
+    rules:
+      - record: vitals:idle_power_watts
+        expr: {idle_power(HW[platform]["meter"])}
+"""
+
+
 def ai_joules_per_token(meter: str) -> str:
-    share = f"clamp_min({meter} - scalar({idle_power(meter)}), 0) * {RUN_ACTIVE}"  # answering only
+    share = f"clamp_min({meter} - scalar({IDLE}), 0) * {RUN_ACTIVE}"  # answering only
     return f"sum(avg_over_time(({share})[2m:15s]) / (sum(rate(vllm:generation_tokens_total[2m])) > 0))"
 
 
@@ -803,6 +818,7 @@ def write_configs(state: pathlib.Path = STATE, platform: str = MAC):
     if not secret.exists():
         _write(secret, secrets.token_urlsafe(12) + "\n", 0o600)
     _write(state / "prometheus.yml", prometheus_config())
+    _write(state / "rules.yml", rules_config(platform))
     _write(state / "grafana.ini", grafana_ini(state, secret.read_text().strip()), 0o600)
     _write(
         state / "provisioning/datasources/prometheus.yml",
