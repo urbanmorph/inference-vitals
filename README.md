@@ -18,7 +18,9 @@ started swapping, or a page was simply longer.
 
 It works with **any model and any local engine**: Ollama, LM Studio, llama.cpp, the MLX servers, Jan,
 LocalAI, or your own Python code. A small proxy in front of the engine measures each request as it
-streams through; your code can also report directly.
+streams through; your code can also report directly. It follows **fine-tuning runs** too (training and
+validation loss, and whether the model is still learning), and on a laptop shows how long the battery
+will last at the current load.
 
 It is [Prometheus](https://prometheus.io) with a dashboard page of its own (or, if you prefer,
 [Grafana](https://grafana.com)), [macmon](https://github.com/vladkens/macmon) for the chip on a Mac (on
@@ -96,6 +98,24 @@ Below that, four sections stay folded until you open them:
 | --- | --- |
 | ![Model memory against the GPU limit, swap and memory pressure](docs/screenshots/memory.png) | ![Core use, power by part, temperatures, clocks and fans](docs/screenshots/power.png) |
 
+**While a fine-tune runs** the page switches to it on its own (whichever reported last, a model run or
+a fine-tune, is shown). The band reads **Training**: the run's name, the phase of its step (Step, Validate,
+Save; and Read, Backward or Write when the trainer reports them), step and epoch, and the time left. The
+run's tiles become Progress (steps), **Train loss** and **Val loss** with their trend, **Learning?**,
+tokens trained per second, learning rate, the trainer's peak memory and seconds per step; the machine
+tiles stay, with energy per *trained* token. **Learning?** reads Learning while validation loss still
+falls, Watch when it stops improving, and **Memorising** when it rises while training loss still falls:
+the model is learning its examples by heart rather than learning from them. The chart plots both losses
+against GPU temperature, and a folded **Training** section has the rest over time. A finished fine-tune
+stays on the page, marked finished, with its last numbers, until a model run reports (or for a week).
+
+![Training mode, after a short LoRA fine-tune on made-up images](docs/screenshots/training-dark.png)
+
+**On battery**, a chip beside the clock shows the charge and how long it will last at the current load,
+worked out from what the battery is giving right now (so it changes as soon as a run starts or stops). It
+turns amber when the battery will run out before the run finishes. On mains power, and on machines with no
+battery, it does not appear.
+
 Light and dark follow your system; the ◐ button switches (or add `?theme=light` to the address). The logo
 links back here.
 
@@ -140,6 +160,8 @@ Nothing starts by itself at login; run `start` when you want to watch something.
 | `uv run inference-vitals status` | What is running, and whether each one answers |
 | `uv run inference-vitals stop` | Stop everything `start` started |
 | `uv run inference-vitals proxy --to URL` | Measure an engine's requests on their way through (port 8401) |
+| `uv run inference-vitals train -- COMMAND` | Run a fine-tune and follow it from what it prints (below) |
+| `uv run inference-vitals watch-training LOG` | Follow a fine-tune from its log file |
 
 The page's address takes a few options, handy for bookmarks: `?range=` (`15m`, `1h`, `6h`, `24h`, `7d`),
 `?theme=` (`light`, `dark`) and `?open=` (sections to show opened, e.g. `?open=memory,hardware`).
@@ -243,6 +265,81 @@ names follow vLLM's where one exists, so dashboards built for vLLM can read them
 Both routes carry numbers only. Prompts, answers and item ids never reach the numbers page, because any
 program on the machine can read `127.0.0.1`; the proxy does not store or log what passes through it.
 
+## Tracking a fine-tune
+
+Three ways, easiest first. All publish on port 8400 (like a model run, so run one at a time), numbers only.
+
+**1. Wrap the training command.** Its output passes through untouched; the page follows it:
+
+```sh
+uv run inference-vitals train --name my-adapter --epochs 2 -- \
+  python -m mlx_vlm.train --model-path ./model --data ./data --train-type lora --epochs 2
+```
+
+**2. Follow a log file** a trainer is already writing (Ctrl-C to stop):
+
+```sh
+uv run inference-vitals watch-training train.log --name my-adapter
+```
+
+When the trainer exits, `train` keeps the final numbers up until the dashboard has read them (at most
+20 seconds), so even a short run ends as finished on the page; `run.finish()` does the same.
+
+Routes 1 and 2 read what the trainer prints, so they work only with trainers whose output they know:
+
+| Trainer | What is read | Tested against |
+| --- | --- | --- |
+| [mlx-vlm](https://github.com/Blaizzy/mlx-vlm) `mlx_vlm.train` | steps, train and validation loss, learning rate, tokens/s, trained tokens, peak memory, saving | its output format (mlx-vlm 0.7) and a live LoRA run on a Mac |
+| [mlx-lm](https://github.com/ml-explore/mlx-examples) `mlx_lm.lora` | the same, from its `Iter N: ...` lines | its documented output format |
+
+Lines they do not recognise change nothing, so another trainer's run simply shows no numbers.
+
+**3. Report from your own training loop**, any framework:
+
+```python
+from inference_vitals import training
+
+run = training.start("my-adapter", total_steps=400, epochs=2)
+for step, batch in enumerate(batches, 1):
+    # ... a training step ...
+    run.step(
+        step,
+        loss=loss,
+        learning_rate=lr,
+        tokens_per_second=tps,
+        peak_memory_gb=mem,
+        epoch=epoch,
+        trained_tokens=total_tokens,
+    )
+    if step % 50 == 0:
+        run.validating()
+        run.validate(val_loss)
+    if step % 100 == 0:
+        run.saving()  # while a checkpoint is written
+run.finish()
+```
+
+Every argument but the step is optional. A loop that knows which part of a step it is in can also say
+`run.part("read")`, `"backward"` or `"write"`, and the band shows it. The numbers, for anything else that
+reads Prometheus (each carries a `run_name` label):
+
+| Metric | Meaning |
+| --- | --- |
+| `vitals_training_phase` | 0 idle, 1 step, 2 validating, 3 saving |
+| `vitals_training_step_part` | within a step, when reported: 1 read, 2 backward, 3 write |
+| `vitals_training_step`, `vitals_training_total_steps` | where the run is |
+| `vitals_training_epoch`, `vitals_training_epochs` | the same, in epochs |
+| `vitals_training_loss`, `vitals_training_val_loss`, `vitals_training_val_loss_best` | training and validation loss |
+| `vitals_training_verdict` | 0 learning, 1 watch, 2 memorising (from two or more validation passes) |
+| `vitals_training_learning_rate`, `vitals_training_tokens_per_second`, `vitals_training_step_seconds` | how it is training |
+| `vitals_training_tokens_total` | tokens trained so far (a counter) |
+| `vitals_training_peak_memory_bytes` | the trainer's peak memory |
+| `vitals_training_updated_seconds` | when it last reported (the page shows whichever run reported last) |
+
+The battery numbers are `vitals_battery_percent`, `vitals_battery_remaining_wh`,
+`vitals_battery_on_power` and `vitals_battery_draw_watts` (the last only while on battery), from macOS's
+battery report or Linux's `/sys/class/power_supply`.
+
 ## Run conditions
 
 `inference_vitals.conditions.snapshot()` (macOS only, for now) returns what the Mac was doing at a moment: thermal and
@@ -292,6 +389,9 @@ tab open and closed and compare tokens per second.
   other dashboard holds the port. `stop`, then `start` with the one you want.
 - **The run's tiles stay empty and the band says "Nothing reporting"**: no model is reporting to
   `127.0.0.1:8400`. Use the proxy or the library (above), and make sure only one of them runs.
+- **A fine-tune shows no numbers with `train` or `watch-training`**: its trainer prints in a format the
+  reader does not know (see the table above). Report from the training loop instead (route 3), or add
+  the format (see Contributing).
 - **Some machine tiles stay empty on Linux**: GPU numbers need `nvidia-smi`; CPU temperature needs a
   `coretemp` or `k10temp` sensor, which virtual machines usually lack.
 
@@ -308,6 +408,10 @@ brew uninstall prometheus macmon   # on a Mac, if nothing else uses them (and gr
 Issues and pull requests are welcome, and reports from Linux with real NVIDIA GPUs especially. For a pull
 request: write the test first, keep the dashboard description in `ui.py` and `monitor.py` (not edited
 by hand in Grafana), and run the checks below before sending it.
+
+**Adding a trainer** to `train` and `watch-training`: capture a few lines of its real output (a step, a
+validation pass, a save; numbers only), add them to `tests/test_follow.py` as a test, and teach
+`follow.Reader` to read them. The test keeps the reader honest if the trainer changes its format.
 
 ## Development
 

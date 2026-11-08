@@ -30,6 +30,7 @@ def _mac(thermal):
             "vm_stat": VM,
             "kern.memorystatus_level": "77",
             "vm.swapusage": "total = 1024.00M  used = 512.00M  free = 512.00M",
+            "ioreg": "",  # no battery
         }[cmd],
         thermal=lambda: thermal,
     )
@@ -81,7 +82,9 @@ def _linux(tmp_path, stats):
     def read(path):
         return next(stats) if path == "/proc/stat" else files[path]
 
-    return sysstat.LinuxHost(read=read, hwmon=tmp_path / "hwmon", page_size=4096)
+    return sysstat.LinuxHost(
+        read=read, hwmon=tmp_path / "hwmon", page_size=4096, power_supply=tmp_path / "none"
+    )
 
 
 def test_linux_memory_swap_and_paging_from_proc(tmp_path):
@@ -118,3 +121,76 @@ def test_no_cpu_sensor_means_no_temperature(tmp_path):
         page_size=4096,
     )
     assert "vitals_host_cpu_temp_celsius" not in host.values()
+
+
+# The battery: only where there is one. Made-up readings in the shapes macOS and Linux give them.
+
+IOREG = """+-o AppleSmartBattery  <class AppleSmartBattery, id 0x100000271, registered, matched, active, busy 0>
+    {
+      "TimeRemaining" = 87
+      "ExternalConnected" = No
+      "Voltage" = 12400
+      "MaxCapacity" = 100
+      "CurrentCapacity" = 64
+      "BatteryData" = {"CurrentCapacity"=64,"AppleRawMaxCapacity"=6365,"RemainingCapacity"=4000,"DesignCapacity"=6249}
+      "IsCharging" = No
+      "InstantAmperage" = -2000
+    }
+"""
+
+
+def test_a_macs_battery_gives_its_charge_the_energy_left_and_whether_it_is_on_power():
+    b = sysstat.mac_battery(IOREG)
+    assert b == {
+        "vitals_battery_percent": 64,
+        "vitals_battery_remaining_wh": 49.6,
+        "vitals_battery_on_power": 0,
+        "vitals_battery_draw_watts": 24.8,  # 2 A out at 12.4 V: what the battery gives right now
+    }
+    assert (
+        sysstat.mac_battery(IOREG.replace('"ExternalConnected" = No', '"ExternalConnected" = Yes'))[
+            "vitals_battery_on_power"
+        ]
+        == 1
+    )
+    assert sysstat.mac_battery("") is None  # a desktop Mac has none
+
+
+def test_the_battery_is_in_the_macs_numbers_only_when_there_is_one():
+    with_battery = sysstat.MacHost(
+        read=lambda cmd: {"ioreg": IOREG}.get(cmd) or _mac(0).read(cmd), thermal=lambda: 0
+    )
+    assert "vitals_battery_remaining_wh 49.6" in with_battery.render()
+    assert "vitals_battery" not in _mac(0).render()
+
+
+def _power_supply(tmp_path, **files):
+    bat = tmp_path / "power_supply" / "BAT0"
+    bat.mkdir(parents=True)
+    for name, text in files.items():
+        (bat / name).write_text(text)
+    return tmp_path / "power_supply"
+
+
+def test_a_linux_laptops_battery_from_sys(tmp_path):
+    root = _power_supply(tmp_path, capacity="80\n", energy_now="40000000\n", status="Discharging\n",
+                         power_now="15000000\n")  # fmt: skip
+    assert sysstat.linux_battery(root) == {"vitals_battery_percent": 80, "vitals_battery_remaining_wh": 40.0,
+                                           "vitals_battery_on_power": 0, "vitals_battery_draw_watts": 15.0}  # fmt: skip
+
+
+def test_a_linux_battery_that_reports_charge_not_energy(tmp_path):
+    root = _power_supply(
+        tmp_path, capacity="50\n", charge_now="3000000\n", voltage_now="12000000\n", status="Charging\n"
+    )
+    b = sysstat.linux_battery(root)
+    assert b["vitals_battery_remaining_wh"] == 36.0 and b["vitals_battery_on_power"] == 1
+
+
+def test_a_server_with_no_battery_has_none(tmp_path):
+    assert sysstat.linux_battery(tmp_path / "power_supply") is None
+
+
+def test_on_power_nothing_is_drawn_from_the_battery():
+    plugged = sysstat.mac_battery(IOREG.replace('"ExternalConnected" = No', '"ExternalConnected" = Yes'))
+    assert "vitals_battery_draw_watts" not in plugged

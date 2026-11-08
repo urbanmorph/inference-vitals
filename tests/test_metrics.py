@@ -196,3 +196,11 @@ def test_the_first_tokens_cannot_report_an_absurd_speed():
     assert "vitals_current_generation_tps 3.0" in m.render()  # counted over at least a second
     m.progress(tokens=40, writing_seconds=2.5)
     assert "vitals_current_generation_tps 16.0" in m.render()
+
+
+def test_a_model_run_says_when_it_last_changed_so_the_page_can_tell_it_from_training(monkeypatch):
+    monkeypatch.setattr(metrics.time, "time", lambda: 1_700_000_123.0)
+    m = metrics.Metrics(total=2, kv_per_token=0)
+    assert "vitals_run_updated_seconds" not in m.render()  # nothing has happened yet
+    m.started({"id": "a"})
+    assert "vitals_run_updated_seconds 1700000123.0" in m.render()

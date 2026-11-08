@@ -11,6 +11,9 @@ little, since both macOS and Linux keep old swap around for hours.
 - Linux: /proc/meminfo (MemAvailable), /proc/vmstat (swap and paging), /proc/stat (CPU busy share) and
   the CPU's own temperature sensor under /sys/class/hwmon.
 
+On a laptop, also its battery: charge, the energy left (watt-hours) and whether it is on power, from
+macOS's AppleSmartBattery (ioreg) or Linux's /sys/class/power_supply. Nothing where there is none.
+
 No sudo, read each time Prometheus asks.
 
   python -m inference_vitals.sysstat --port 9092
@@ -36,6 +39,12 @@ METRICS = [  # on every platform
     "vitals_host_swap_used_bytes",
 ]
 MAC_ONLY = ["vitals_host_thermal_state"]
+BATTERY = [  # laptops only; the draw only while it runs on the battery
+    "vitals_battery_percent",
+    "vitals_battery_remaining_wh",
+    "vitals_battery_on_power",
+    "vitals_battery_draw_watts",
+]
 LINUX_ONLY = ["vitals_host_cpu_busy_ratio", "vitals_host_cpu_temp_celsius"]
 VM_FIELDS = {
     "Swapins": "swapped_in",
@@ -83,8 +92,64 @@ def thermal_state():
     return state if state in (0, 1, 2, 3) else None
 
 
+def mac_battery(text: str):
+    """From `ioreg -rn AppleSmartBattery`: charge (%), energy left (mAh left x volts) and whether it is on
+    power; None with no battery."""
+
+    def num(pattern):
+        m = re.search(pattern, text)
+        return int(m.group(1)) if m else None
+
+    percent, volts_mv = num(r'"CurrentCapacity" = (\d+)'), num(r'"Voltage" = (\d+)')
+    mah = num(r'"(?:AppleRawCurrentCapacity|RemainingCapacity)"\s*=\s*(\d+)')
+    if percent is None or volts_mv is None or mah is None:
+        return None
+    out = {
+        "vitals_battery_percent": percent,
+        "vitals_battery_remaining_wh": round(mah * volts_mv / 1e6, 1),
+        "vitals_battery_on_power": int('"ExternalConnected" = Yes' in text),
+    }
+    amps = re.search(r'"(?:InstantAmperage|Amperage)" = (-?\d+)', text)  # mA, negative while it gives power
+    if not out["vitals_battery_on_power"] and amps:
+        out["vitals_battery_draw_watts"] = round(abs(int(amps.group(1))) * volts_mv / 1e6, 1)
+    return out
+
+
+def linux_battery(root=pathlib.Path("/sys/class/power_supply")):
+    """The first battery under /sys/class/power_supply: energy_now in µWh, or charge_now (µAh) x
+    voltage_now (µV); on power unless it says it is discharging. None with no battery."""
+    for bat in sorted(root.glob("BAT*")) if root.exists() else []:
+
+        def read(name, bat=bat):
+            f = bat / name
+            return f.read_text().strip() if f.exists() else None
+
+        if read("energy_now"):
+            wh = int(read("energy_now")) / 1e6
+        elif read("charge_now") and read("voltage_now"):
+            wh = int(read("charge_now")) * int(read("voltage_now")) / 1e12
+        else:
+            continue
+        out = {
+            "vitals_battery_percent": int(read("capacity") or 0),
+            "vitals_battery_remaining_wh": round(wh, 1),
+            "vitals_battery_on_power": int(read("status") != "Discharging"),
+        }
+        if not out["vitals_battery_on_power"]:  # µW, or µA x µV
+            if read("power_now"):
+                out["vitals_battery_draw_watts"] = round(int(read("power_now")) / 1e6, 1)
+            elif read("current_now") and read("voltage_now"):
+                out["vitals_battery_draw_watts"] = round(
+                    int(read("current_now")) * int(read("voltage_now")) / 1e12, 1
+                )
+        return out
+    return None
+
+
 def _mac_read(name: str) -> str:
-    cmd = ["vm_stat"] if name == "vm_stat" else ["sysctl", "-n", name]
+    cmd = {"vm_stat": ["vm_stat"], "ioreg": ["ioreg", "-rn", "AppleSmartBattery"]}.get(
+        name, ["sysctl", "-n", name]
+    )
     return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
 
 
@@ -112,7 +177,7 @@ class MacHost(_Exporter):
         state = self.thermal()
         if state is not None:
             v["vitals_host_thermal_state"] = state
-        return v
+        return {**v, **(mac_battery(self.read("ioreg")) or {})}
 
 
 def _fields(text: str) -> dict:
@@ -147,8 +212,9 @@ def _linux_read(path: str) -> str:
 
 
 class LinuxHost(_Exporter):
-    def __init__(self, read=_linux_read, hwmon=pathlib.Path("/sys/class/hwmon"), page_size=None):
-        self.read, self.hwmon = read, hwmon
+    def __init__(self, read=_linux_read, hwmon=pathlib.Path("/sys/class/hwmon"), page_size=None,
+                 power_supply=pathlib.Path("/sys/class/power_supply")):  # fmt: skip
+        self.read, self.hwmon, self.power_supply = read, hwmon, power_supply
         self.page = page_size or os.sysconf("SC_PAGE_SIZE")
         self.last_ticks = None
 
@@ -173,7 +239,7 @@ class LinuxHost(_Exporter):
         temp = cpu_temperature(self.hwmon)
         if temp is not None:
             v["vitals_host_cpu_temp_celsius"] = temp
-        return v
+        return {**v, **(linux_battery(self.power_supply) or {})}
 
 
 def host():

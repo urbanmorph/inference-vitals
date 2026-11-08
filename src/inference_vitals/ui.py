@@ -58,6 +58,7 @@ def _energy(platform: str) -> dict:
         "idle_query": idle_power(power),
         "ai_query": f"sum_over_time((clamp_min({power} - {{base}}, 0) * {ACTIVE})[{{range}}:{{step}}s]) * {{step}} / 3600",
         "tokens_query": "sum(increase(vllm:generation_tokens_total[{range}]))",
+        "trained_tokens_query": "sum(increase(vitals_training_tokens_total[{range}]))",
     }
 
 
@@ -113,6 +114,56 @@ def _tiles(platform: str) -> dict:
     return {"run": run, "machine": machine}
 
 
+def _training(platform: str) -> dict:
+    """A fine-tune: the band (its step's phase), its own tiles, and loss against GPU temperature. The page
+    shows these instead of a model run's whenever the fine-tune reported last."""
+    # the last value the latest run reported, so a finished run stays readable (its final loss, its
+    # verdict) and an older run's numbers never mix in
+    latest = "and on(run_name) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
+    t = ("max(last_over_time(vitals_training_{}[7d]) " + latest + ")").format
+    tiles = [
+        {"title": "Progress", "kind": "progress", "of": "steps", "query": f"{t('step')} / {t('total_steps')}",
+         "done_query": t("step"), "total_query": t("total_steps")},
+        {"title": "Train loss", "kind": "spark", "unit": "none", "query": t("loss")},
+        {"title": "Val loss", "kind": "spark", "unit": "none", "query": t("val_loss"),
+         "best_query": t("val_loss_best")},
+        {"title": "Learning?", "kind": "steps", "query": t("verdict"), "names": ["Learning", "Watch", "Memorising"]},
+        {"title": "Tokens/s", "kind": "speed", "unit": "tok/s", "query": t("tokens_per_second"),
+         "max_query": "max(quantile_over_time(0.99, vitals_training_tokens_per_second[{range}]))"},
+        {"title": "Learning rate", "kind": "plain", "unit": "none", "query": t("learning_rate")},
+        {"title": "Peak memory", "kind": "plain", "unit": "bytes", "query": t("peak_memory_bytes"),
+         "note": "the trainer's highest so far"},
+        {"title": "Time per step", "kind": "spark", "unit": "s", "query": t("step_seconds")},
+    ]  # fmt: skip
+    return {
+        "band": {
+            # the latest run's phase (0 once it has finished), with its name
+            "phase_query": f"last_over_time(vitals_training_phase[7d]) {latest}",
+            "names": ["Idle", "Step", "Validate", "Save"],
+            "part_query": t("step_part"),
+            "parts": ["", "read", "backward", "write"],
+            "step_query": t("step"),
+            "total_query": t("total_steps"),
+            "epoch_query": t("epoch"),
+            "epochs_query": t("epochs"),
+            "step_seconds_query": t("step_seconds"),
+        },
+        "tiles": tiles,
+        "main": {
+            "title": "Training and validation loss, against GPU temperature",
+            "targets": [
+                {"expr": "vitals_training_loss", "legend": "train loss {{run_name}}", "unit": "none"},
+                {
+                    "expr": "vitals_training_val_loss",
+                    "legend": "validation loss {{run_name}}",
+                    "unit": "none",
+                },
+                {"expr": HW[platform]["gpu_temp"], "legend": "GPU °C", "unit": "°C", "axis": "right"},
+            ],
+        },
+    }
+
+
 def _sections(platform: str) -> list[dict]:
     """The Grafana dashboard's folded sections, panel for panel: same titles, queries, legends and units."""
     out = []
@@ -147,6 +198,19 @@ def spec(platform: str) -> dict:
         },
         "energy": _energy(platform),
         "tiles": _tiles(platform),
+        "training": _training(platform),
+        # whichever reported last, a model run or a fine-tune, decides what the band and run tiles show
+        "mode": {
+            "training_query": "max(max_over_time(vitals_training_updated_seconds[7d]))",
+            "run_query": "max(max_over_time(vitals_run_updated_seconds[7d]))",
+        },
+        # laptops: the battery's own discharge rate gives the time left at this load
+        "battery": {
+            "percent_query": "max(vitals_battery_percent)",
+            "wh_query": "max(vitals_battery_remaining_wh)",
+            "on_power_query": "max(vitals_battery_on_power)",
+            "draw_query": "max(vitals_battery_draw_watts)",
+        },
         "main": {
             "title": "Writing speed against GPU temperature",
             "targets": [

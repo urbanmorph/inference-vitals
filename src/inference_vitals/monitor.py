@@ -5,6 +5,8 @@
   inference-vitals status
   inference-vitals stop
   inference-vitals proxy --to http://127.0.0.1:11434    watch an engine (Ollama here); see proxy.py
+  inference-vitals train -- <training command>         follow a fine-tune as it runs; see follow.py
+  inference-vitals watch-training <log file>            follow a fine-tune from its log
 
 Prometheus records every 5 seconds whether or not the dashboard is open, so a run can be looked at
 afterwards with nothing drawing while it ran. Everything listens on 127.0.0.1 only. Configs, data and logs
@@ -249,7 +251,11 @@ SLOWDOWN_NAMES = ["None", "Power cap", "Thermal", "Hardware"]  # gpustat.slowdow
 # day's power, which follows the screen and background apps) while a model is reading or writing. Energy per
 # token is that share divided by the tokens written, here over a rolling 2 minutes; the page's band and tile
 # use the same split over the chosen range, so every energy figure agrees.
-ACTIVE = "(max(vitals_current_phase) > bool 0)"  # 1 while a model is reading or writing, else 0
+# 1 while a model is reading or writing, or a fine-tune is training, else 0 (either may not be reporting)
+ACTIVE = (
+    "clamp_max(((max(vitals_current_phase) > bool 0) or vector(0))"
+    " + ((max(vitals_training_phase) > bool 0) or vector(0)), 1)"
+)
 
 
 def idle_power(meter: str) -> str:
@@ -304,6 +310,27 @@ def _flow(panels: list, y: int):
         x += g["w"]
         if x >= 24:
             x, y = 0, y + g["h"]
+
+
+def _training_panels() -> list:
+    """A fine-tune, as inference_vitals.training publishes it (directly, or followed from a trainer's log)."""
+    r = "{{run_name}}"
+    return [
+        _panel(
+            "Training and validation loss",
+            [
+                ("vitals_training_loss", f"train loss {r}"),
+                ("vitals_training_val_loss", f"validation loss {r}"),
+            ],
+            "none",
+            0,
+            0,
+        ),
+        _panel("Tokens trained per second", [("vitals_training_tokens_per_second", r)], TOK_S, 12, 0),
+        _panel("Seconds per step", [("vitals_training_step_seconds", r)], "s", 0, 8),
+        _panel("Learning rate", [("vitals_training_learning_rate", r)], "none", 12, 8),
+        _panel("Peak memory of the trainer", [("vitals_training_peak_memory_bytes", r)], "decbytes", 0, 16),
+    ]
 
 
 def _memory_panels(platform: str, m: str) -> list:
@@ -639,6 +666,7 @@ def dashboard(platform: str = MAC) -> dict:
         ),
         _row("Memory", 20, panels=_memory_panels(platform, m)),
         _row("Hardware", 21, panels=_hardware_panels(platform, m)),
+        _row("Training", 22, panels=_training_panels()),
     ]
     for row in details:
         for p in row["panels"]:
@@ -922,6 +950,10 @@ def main():
         from inference_vitals import proxy
 
         return proxy.main(sys.argv[2:])
+    if action in ("train", "watch-training"):
+        from inference_vitals import follow
+
+        return follow.main(action, sys.argv[2:])
     if action not in ("start", "stop", "status"):
         sys.exit(__doc__)
     if action == "start":

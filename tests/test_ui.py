@@ -24,7 +24,20 @@ def _queries(spec):
     for k, v in spec["running"].items():
         if k.endswith("query"):
             yield "running", v
-    for chart in [spec["main"], *(p for s in spec["sections"] for p in s["panels"])]:
+    for tile in spec["training"]["tiles"]:
+        for k, v in tile.items():
+            if k.endswith("query"):
+                yield tile["title"], v
+    for part in ("training_band", "battery", "mode"):
+        src = spec["training"]["band"] if part == "training_band" else spec[part]
+        for k, v in src.items():
+            if k.endswith("query"):
+                yield part, v
+    for chart in [
+        spec["main"],
+        spec["training"]["main"],
+        *(p for s in spec["sections"] for p in s["panels"]),
+    ]:
         for t in chart["targets"]:
             yield chart["title"], t["expr"]
 
@@ -169,3 +182,53 @@ def test_nothing_can_be_posted(page):
 def test_the_server_listens_on_this_machine_only(page):
     url, _ = page
     assert url.startswith("http://127.0.0.1:")
+
+
+def test_training_has_its_own_tiles_band_and_chart():
+    t = ui.spec(monitor.MAC)["training"]
+    kinds = {x["title"]: x["kind"] for x in t["tiles"]}
+    assert kinds["Progress"] == "progress" and kinds["Learning?"] == "steps"
+    assert kinds["Train loss"] == kinds["Val loss"] == "spark" and kinds["Tokens/s"] == "speed"
+    learning = next(x for x in t["tiles"] if x["title"] == "Learning?")
+    assert learning["names"] == [
+        "Learning",
+        "Watch",
+        "Memorising",
+    ]  # in the order training.LEARNING, ... count
+    assert t["band"]["names"][1:] == ["Step", "Validate", "Save"]
+    assert [x["legend"] for x in t["main"]["targets"]][:2] == [
+        "train loss {{run_name}}",
+        "validation loss {{run_name}}",
+    ]
+
+
+def test_the_page_tells_a_fine_tune_from_a_model_run_by_which_reported_last():
+    mode = ui.spec(monitor.MAC)["mode"]
+    assert "vitals_training_updated_seconds" in mode["training_query"]
+    assert "vitals_run_updated_seconds" in mode["run_query"]
+
+
+def test_the_battery_time_comes_from_the_battery_itself():
+    b = ui.spec(monitor.LINUX)["battery"]
+    assert "vitals_battery_draw_watts" in b["draw_query"] and "vitals_battery_remaining_wh" in b["wh_query"]
+
+
+def test_a_finished_fine_tune_stays_readable_with_its_last_numbers():
+    t = ui.spec(monitor.MAC)["training"]
+    for tile in t["tiles"]:
+        assert tile["query"].startswith("max(last_over_time(vitals_training_") or "/" in tile["query"], tile[
+            "title"
+        ]
+    band = t["band"]
+    assert "last_over_time(vitals_training_phase[7d])" in band["phase_query"]
+    assert "topk(1" in band["phase_query"]  # only the latest run, not every run of the week
+
+
+def test_every_training_number_is_the_latest_runs_never_an_older_ones():
+    t = ui.spec(monitor.MAC)["training"]
+    latest = "and on(run_name) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
+    for tile in t["tiles"]:
+        assert latest in tile["query"], tile["title"]
+    for k, q in t["band"].items():
+        if k.endswith("query"):
+            assert latest in q, k

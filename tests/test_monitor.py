@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from inference_vitals import gpustat, metrics, monitor, sysstat
+from inference_vitals import gpustat, metrics, monitor, sysstat, training
 
 
 def _known_metric_names():
@@ -35,7 +35,16 @@ def _known_metric_names():
             "load_s": 1.0,
         }
     )
-    ours = {line.split("{")[0].split(" ")[0] for line in (writing + m.render()).splitlines()}
+    run = training.Training("t", total_steps=2, epochs=1)  # a fine-tune that has done everything once
+    run.step(
+        1, loss=1.0, learning_rate=1e-4, tokens_per_second=1.0, peak_memory_gb=1.0, epoch=1, trained_tokens=1
+    )
+    run.step(2, loss=0.9)
+    run.part("backward")
+    run.validate(1.0)
+    run.validate(0.9)
+    ours = {line.split("{")[0].split(" ")[0] for line in (writing + m.render() + run.render()).splitlines()}
+    ours |= set(sysstat.BATTERY)  # on laptops, on either platform
     return {
         monitor.MAC: ours | set(monitor.MACMON_METRICS) | set(sysstat.METRICS) | set(sysstat.MAC_ONLY),
         monitor.LINUX: ours | set(gpustat.METRICS) | set(sysstat.METRICS) | set(sysstat.LINUX_ONLY),
@@ -423,3 +432,9 @@ def test_energy_per_token_is_the_model_s_share_of_power_over_tokens_everywhere(p
 def test_the_whole_machine_is_metered_on_a_mac_and_the_gpus_on_linux():
     assert monitor.HW[monitor.MAC]["meter"] == "max(macmon_sys_power_watts)"
     assert monitor.HW[monitor.LINUX]["meter"] == "sum(vitals_gpu_power_watts)"
+
+
+def test_a_fine_tune_counts_as_the_ai_being_active_for_its_share_of_the_energy():
+    a = monitor.ACTIVE
+    assert "vitals_current_phase" in a and "vitals_training_phase" in a
+    assert "or vector(0)" in a and a.startswith("clamp_max(")  # one, or the other, or both: still just 1

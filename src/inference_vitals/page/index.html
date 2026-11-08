@@ -18,13 +18,14 @@
       <span>inference<b>-</b>vitals</span>
     </a>
     <span class="spacer"></span>
+    <span class="battery" id="battery" hidden title="Only on battery: charge left ÷ what the battery gives right now, so it changes as soon as the load does"></span>
     <span class="clock" id="clock" title="Your local time: every time on this page is in this time zone"></span>
     <div class="pills" role="group" aria-label="Time range" id="ranges"></div>
     <button class="icon" id="theme" title="Light or dark" aria-label="Switch light or dark">◐</button>
   </header>
 
   <section class="running" aria-label="Running">
-    <span class="label">Running</span>
+    <span class="label" id="band-label">Running</span>
     <span id="models" class="models"></span>
     <span class="run-meta" id="run-meta"></span>
     <div class="energy">
@@ -39,7 +40,7 @@
     </div>
   </section>
 
-  <h2>The run</h2>
+  <h2 id="run-h">The run</h2>
   <div class="tiles" id="run"></div>
   <h2>The machine</h2>
   <div class="tiles" id="machine"></div>

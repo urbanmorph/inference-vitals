@@ -64,7 +64,7 @@ function fmt(v, unit, digits) {
     case "percent": return { n: v.toFixed(d(v)), u: "%" };
     case "watt": return { n: v.toFixed(d(v)), u: "W" };
     case "celsius": return { n: v.toFixed(1), u: "°C" };
-    case "none": case undefined: case "": return { n: compact(v, d), u: "" };
+    case "none": case undefined: case "": return { n: v !== 0 && Math.abs(v) < 0.01 ? v.toExponential(1) : compact(v, d), u: "" };
     default: return { n: compact(v, d), u: unit.replace(/^suffix: */, "") };
   }
 }
@@ -145,7 +145,7 @@ async function renderTile(t) {
     case "progress": {
       const [done, total] = await Promise.all([one(t.done_query), one(t.total_query)]);
       return head(t.title, scaled === null ? null : scaled * 100, "%", scaled === null ? "plain" : "ok", 0)
-        + sub(total ? `${done} of ${total} pages` : "no run reporting") + bar(scaled * 100, "ok");
+        + sub(total ? `${done} of ${total} ${t.of || "pages"}` : "no run reporting") + bar(scaled * 100, "ok");
     }
     case "speed": {
       const top = await slow(`${range} ${t.max_query}`, () => one(fill(t.max_query))), max = niceMax(Math.max(top || 0, v || 0));
@@ -182,11 +182,14 @@ async function renderTile(t) {
     case "spark": {
       const series = await slow(`${range} ${t.query}`, () => rangeQuery(t.query, 60));
       const points = series.length ? series[0].values.map(([x, y]) => [x, parseFloat(y)]) : [];
-      return head(t.title, v, t.unit, tn) + spark(points);
+      const best = t.best_query ? await one(t.best_query) : null;
+      return head(t.title, v, t.unit, tn) + (best === null ? "" : sub(`best ${text(best, t.unit)}`)) + spark(points);
     }
-    case "energy-per-token": {
-      const e = state.energy, jt = e && e.ai !== null && e.tokens ? (e.ai * 3600) / e.tokens : null;
-      return head(t.title, jt, t.unit, "plain") + sub(jt === null ? "AI energy ÷ tokens" : `over ${text(e.tokens, "none")} tokens`);
+    case "energy-per-token": {  // while training: per trained token
+      const e = state.energy, training = state.mode === "training", tokens = e && (training ? e.trained : e.tokens);
+      const jt = e && e.ai !== null && tokens ? (e.ai * 3600) / tokens : null;
+      return head(training ? "Energy/trained token" : t.title, jt, t.unit, "plain")
+        + sub(jt === null ? "AI energy ÷ tokens" : `over ${text(tokens, "none")} ${training ? "trained " : ""}tokens`);
     }
     default:
       return head(t.title, v, t.unit, "plain") + sub(t.note);
@@ -194,7 +197,8 @@ async function renderTile(t) {
 }
 async function renderTiles() {
   await Promise.all(["run", "machine"].map(async (group) => {
-    const html = await Promise.all(SPEC.tiles[group].map(async (t) => {
+    const tiles = group === "run" && state.mode === "training" ? SPEC.training.tiles : SPEC.tiles[group];
+    const html = await Promise.all(tiles.map(async (t) => {
       const body = await renderTile(t).catch(() => head(t.title, null, "", "plain"));
       const gauge = ["speed", "zones", "ring"].includes(t.kind) ? " gauge" : "";
       return `<div class="tile${gauge}" title="${esc(t.title)}">${body}</div>`;
@@ -211,14 +215,59 @@ function clockText(date, locale, timeZone) {  // "23:01:05 IST": local time, wit
   return `${get("hour")}:${get("minute")}:${get("second")} ${get("timeZoneName")}`.trim();
 }
 
+// ---- which run the page is about, and the battery ----
+const state = { energy: null, mode: "inference", left: null };  // left: seconds the current run still needs
+function modeOf(trainingAt, runAt) {  // whichever reported last: a fine-tune, or a model run (the default)
+  return trainingAt !== null && (runAt === null || trainingAt > runAt) ? "training" : "inference";
+}
+async function decideMode() {
+  const m = SPEC.mode;  // a week of readings: asked at the charts' pace, not every few seconds
+  const [t, r] = await slow("mode", () => Promise.all([one(m.training_query), one(m.run_query)]));
+  state.mode = modeOf(t, r);
+  $("band-label").textContent = state.mode === "training" ? "Training" : "Running";
+  $("run-h").textContent = state.mode === "training" ? "The training run" : "The run";
+}
+function batteryText(b, left) {  // only on battery: charge, and the time left at the battery's own draw now
+  if (b.percent === null || b.percent === undefined || b.onPower) return { hidden: true, text: "", warn: false };
+  if (!b.draw || !b.wh) return { hidden: false, text: `🔋 ${Math.round(b.percent)}%`, warn: false };
+  const secs = (b.wh / b.draw) * 3600, warn = left !== null && left !== undefined && secs < left;
+  return { hidden: false, warn,
+    text: `🔋 ${Math.round(b.percent)}% · ~${duration(secs)} at this load${warn ? ` (the run needs ~${duration(left)})` : ""}` };
+}
+async function renderBattery() {
+  const q = SPEC.battery;
+  const [percent, wh, onPower, draw] = await Promise.all([one(q.percent_query), one(q.wh_query), one(q.on_power_query), one(q.draw_query)]);
+  const b = batteryText({ percent, wh, onPower, draw }, state.left), el = $("battery");
+  el.hidden = b.hidden;
+  el.textContent = b.text;
+  el.classList.toggle("warn", b.warn);
+}
+
 // ---- running band and energy ----
-const state = { energy: null };
 function duration(s) {
   if (s === null || !Number.isFinite(s)) return "";
   const m = Math.round(s / 60);
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
 }
+async function renderTrainingBand() {
+  const b = SPEC.training.band, runs = await instant(b.phase_query);
+  const [part, step, total, epoch, epochs, perStep] = await Promise.all(
+    [b.part_query, b.step_query, b.total_query, b.epoch_query, b.epochs_query, b.step_seconds_query].map(one));
+  $("models").innerHTML = runs.map((p) => {
+    const i = Math.round(parseFloat(p.value[1]));
+    const pills = b.names.slice(1).map((n, k) => {
+      const on = i === k + 1, label = on && k === 0 && part ? `${n} · ${b.parts[Math.round(part)] || ""}` : n;
+      return `<span class="${on ? "on" : ""}">${on ? '<span class="dot"></span>' : ""}${esc(label)}</span>`;
+    }).join("") + (i === 0 ? `<span class="on">finished</span>` : "");
+    return `<span class="model">${esc(p.metric.run_name || "training")} <span class="phases">${pills}</span></span>`;
+  }).join("") || `<span class="idle">No fine-tune has reported this week.</span>`;
+  const running = runs.some((p) => Math.round(parseFloat(p.value[1])) > 0);  // a finished run needs no time
+  state.left = running && total && step !== null && perStep ? (total - step) * perStep : null;
+  $("run-meta").textContent = total ? `step ${step} of ${total}${epochs ? ` · epoch ${epoch ?? 1} of ${epochs}` : ""}`
+    + `${state.left ? ` · about ${duration(state.left)} left` : ""}` : "";
+}
 async function renderRunning() {
+  if (state.mode === "training") return renderTrainingBand();
   const r = SPEC.running, phases = await instant(r.phase_query);
   $("models").innerHTML = phases.length
     ? phases.map((p) => { const i = Math.round(parseFloat(p.value[1]));
@@ -226,16 +275,18 @@ async function renderRunning() {
     : `<span class="idle">Nothing reporting. The machine numbers below still update.</span>`;
   const [done, total, perPage] = await Promise.all([one(r.done_query), one(r.total_query), one(r.seconds_per_page_query)]);
   const left = total && done !== null && perPage ? (total - done) * perPage : null;
+  state.left = left;
   $("run-meta").textContent = total ? `page ${done} of ${total}${left ? ` · about ${duration(left)} left` : ""}` : "";
 }
 async function renderEnergy() {
   const e = SPEC.energy, step = chosen().step;
   const filled = (q, base) => q.replaceAll("{range}", range).replaceAll("{step}", step).replaceAll("{base}", base);
   const base = await one(e.idle_query);
-  const [total, ai, tokens] = await Promise.all([
+  const [total, ai, tokens, trained] = await Promise.all([
     one(filled(e.total_query)), base === null ? null : one(filled(e.ai_query, base)), one(filled(e.tokens_query)),
+    one(filled(e.trained_tokens_query)),
   ]);
-  state.energy = { total, ai, tokens };
+  state.energy = { total, ai, tokens, trained };
   $("energy").textContent = energyText(total);
   $("energy-label").textContent = `in the last ${chosen().label} · ${e.meter}`;
   const share = total && ai !== null ? Math.round((ai / total) * 100) : null;
@@ -281,7 +332,7 @@ function hover(el, ev) {  // the crosshair: a line at the pointer and a tooltip 
   tip.style.top = `${ev.clientY - el.getBoundingClientRect().top + 12}px`;
 }
 const label = (legend, metric) => (legend || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => metric[k] || "").trim() || metric.model_name || "";
-const PALETTE = ["var(--accent)", "var(--heat)", "#58a6ff", "#bc8cff", "#e3b341", "#39c5cf", "var(--muted)"];
+const PALETTE = ["var(--accent)", "#e3b341", "#58a6ff", "#bc8cff", "#39c5cf", "var(--muted)"];  // heat is the right axis's own
 async function renderChart(el, panel) {
   const series = [];
   await Promise.all(panel.targets.map(async (t, ti) => {
@@ -318,7 +369,7 @@ async function renderChart(el, panel) {
     const tl = long ? d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     g += `<text x="${X(t)}" y="${H - 5}" text-anchor="middle">${esc(tl)}</text>`;
   }
-  const colors = series.map((s, i) => PALETTE[(s.axis === "right" && series.length === 2) ? 1 : i % PALETTE.length]);
+  const colors = series.map((s, i) => (s.axis === "right" ? "var(--heat)" : PALETTE[i % PALETTE.length]));  // the right axis is temperature
   series.forEach((s, i) => {
     const pts = s.points.map((p) => `${X(p[0]).toFixed(1)},${Y(p[1], s.axis).toFixed(1)}`).join(" ");
     g += `<polyline points="${pts}" fill="none" stroke="${colors[i]}" stroke-width="1.6" stroke-linejoin="round"/>`;
@@ -350,7 +401,7 @@ async function renderSection(i) {
 }
 async function renderCharts() {
   $("main").dataset.h = 220;
-  await renderChart($("main"), SPEC.main);
+  await renderChart($("main"), state.mode === "training" ? SPEC.training.main : SPEC.main);
   await Promise.all([...document.querySelectorAll("details[open]")].map((d) => renderSection(+d.dataset.i)));
 }
 
@@ -386,8 +437,10 @@ function rateBox() {
 let last = { charts: 0, energy: 0 };
 async function refresh(all = false) {
   if (document.hidden && !all) return;  // nothing to draw while the tab is not visible
-  const now = Date.now();
-  const jobs = [renderRunning()];
+  const now = Date.now(), was = state.mode;
+  await decideMode();
+  if (state.mode !== was) all = true;  // a fine-tune started or a model run did: redraw the chart now
+  const jobs = [renderRunning().then(renderBattery)];
   if (all || now - last.energy >= ENERGY_EVERY) { last.energy = now; jobs.push(renderEnergy()); }
   await Promise.all(jobs);
   await renderTiles();  // after energy, which Energy/token uses
@@ -413,5 +466,5 @@ async function main() {
 }
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
-  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText };
+  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText };
 }

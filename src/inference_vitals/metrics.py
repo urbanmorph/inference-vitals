@@ -23,6 +23,7 @@ or writing the answer (phase 2), with tokens so far and the current writing spee
 import http.server
 import json
 import threading
+import time
 
 NUMBERS = (
     "ttft_s",
@@ -91,21 +92,27 @@ class Metrics:
         if context_limit:
             self.sticky["context_limit_tokens"] = context_limit
         self.hist = {name: {"counts": [0] * len(b), "sum": 0.0, "n": 0} for name, b in BUCKETS.items()}
+        self.updated = (
+            None  # wall time of the last change: the page shows whichever run, model or training, is newer
+        )
 
     def cached(self, _item):
         with self.lock:
             self.already += 1
+            self.updated = time.time()
 
     def started(self, _item):
         with self.lock:
             self.running += 1
             self.phase, self.now_tokens, self.now_tps, self.now_prompt = READING, 0, 0.0, None
+            self.updated = time.time()
 
     def progress(self, tokens: int, writing_seconds: float, prompt_tokens: int | None = None):
         """Called as tokens arrive: `tokens` written so far, `writing_seconds` since the first one, and the
         prompt's size if known."""
         with self.lock:
             self.phase, self.now_tokens, self.now_prompt = WRITING, tokens, prompt_tokens
+            self.updated = time.time()
             # over at least a second: the first tokens arrive within milliseconds, which would read as
             # hundreds of thousands of tokens a second
             self.now_tps = round(tokens / max(writing_seconds, 1.0), 1)
@@ -122,6 +129,7 @@ class Metrics:
         with self.lock:
             self.running = max(0, self.running - 1)
             self.done += 1
+            self.updated = time.time()
             self.prompt_tokens += nums.get("prompt_tokens", 0)
             # the final count replaces the live one, but a counter never goes down
             self.generation_tokens += max(nums.get("generation_tokens", 0), self._writing())
@@ -198,6 +206,8 @@ class Metrics:
             if "load_s" in s:
                 gauges.append(("vitals_model_load_seconds", s["load_s"]))
             gauges += [(f"vitals_last_{k}", self.last[k]) for k in LAST if k in self.last]
+            if self.updated is not None:
+                gauges.append(("vitals_run_updated_seconds", self.updated))
             for k in ("active_memory_gb", "peak_memory_gb", "cache_memory_gb"):
                 if k in self.last:
                     gauges.append((f"vitals_{k.removesuffix('_gb')}_bytes", round(self.last[k] * 1e9)))

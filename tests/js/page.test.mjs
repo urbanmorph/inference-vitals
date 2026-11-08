@@ -63,3 +63,28 @@ test("the clock shows local time with its time zone", () => {
   assert.equal(page.clockText(at, "en-IN", "Asia/Kolkata"), "23:01:05 IST");
   assert.equal(page.clockText(at, "en-GB", "Europe/London"), "17:31:05 GMT");
 });
+
+test("the page shows whichever reported last, a fine-tune or a model run", () => {
+  const { modeOf } = page;
+  assert.equal(modeOf(2000, 1000), "training");
+  assert.equal(modeOf(1000, 2000), "inference");
+  assert.equal(modeOf(1000, null), "training");
+  assert.equal(modeOf(null, null), "inference");  // nothing yet: today's page
+});
+
+test("the battery chip shows only on battery, with the time left at this load", () => {
+  const { batteryText } = page;
+  assert.equal(batteryText({ percent: 64, wh: 49.6, draw: 24.8, onPower: 0 }, null).text, "🔋 64% · ~2 h 0 min at this load");
+  assert.equal(batteryText({ percent: 64, wh: 49.6, draw: 24.8, onPower: 1 }, null).hidden, true);  // on power
+  assert.equal(batteryText({ percent: null }, null).hidden, true);  // no battery
+  assert.equal(batteryText({ percent: 80, wh: 40, draw: null, onPower: 0 }, null).text, "🔋 80%");  // no rate yet
+  const short = batteryText({ percent: 18, wh: 6, draw: 60, onPower: 0 }, 9 * 60);  // 6 min left, the run needs 9
+  assert.equal(short.warn, true);
+  assert.equal(short.text, "🔋 18% · ~6 min at this load (the run needs ~9 min)");
+  assert.equal(batteryText({ percent: 64, wh: 49.6, draw: 24.8, onPower: 0 }, 600).warn, false);
+});
+
+test("a learning rate and other tiny numbers keep their digits", () => {
+  assert.equal(page.text(0.0001, "none"), "1.0e-4");
+  assert.equal(page.text(0.42, "none"), "0.42");
+});
