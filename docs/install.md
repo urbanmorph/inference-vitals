@@ -9,9 +9,8 @@ brings the Python it needs (3.11 or later); nothing is installed into your syste
 
 ```sh
 brew install uv prometheus macmon
-git clone https://github.com/urbanmorph/inference-vitals.git
-cd inference-vitals
-uv run inference-vitals start
+uv tool install inference-vitals
+inference-vitals start
 open http://127.0.0.1:3000
 ```
 
@@ -29,8 +28,8 @@ to watch something.
 Model runs and fine-tunes report on `127.0.0.1:8400`, which Prometheus also reads (see
 [connect.md](connect.md) and [training.md](training.md)).
 
-**Prefer Grafana?** `brew install grafana`, then `uv run inference-vitals stop` and
-`uv run inference-vitals start --ui grafana`. The same dashboard opens at
+**Prefer Grafana?** `brew install grafana`, then `inference-vitals stop` and
+`inference-vitals start --ui grafana`. The same dashboard opens at
 `http://127.0.0.1:3000/d/inference-vitals`, view-only, with sign-in, sharing, plugins and alerting off.
 Grafana has no training mode: a fine-tune shows in its own folded **Training** row, while the band and
 tiles at the top stay those of a model run.
@@ -39,13 +38,13 @@ tiles at the top stay those of a model run.
 
 | Command | What it does |
 | --- | --- |
-| `uv run inference-vitals start` | Start the exporters, Prometheus and the page (each only if not running) |
-| `uv run inference-vitals start --ui grafana` | The same, with Grafana in place of the page |
-| `uv run inference-vitals status` | What is running, and whether each one answers |
-| `uv run inference-vitals stop` | Stop everything `start` started |
-| `uv run inference-vitals proxy --to URL` | Measure an engine's requests on their way through (port 8401); see [connect.md](connect.md) |
-| `uv run inference-vitals train -- COMMAND` | Run a fine-tune and follow it from what it prints; see [training.md](training.md) |
-| `uv run inference-vitals watch-training LOG` | Follow a fine-tune from its log file |
+| `inference-vitals start` | Start the exporters, Prometheus and the page (each only if not running) |
+| `inference-vitals start --ui grafana` | The same, with Grafana in place of the page |
+| `inference-vitals status` | What is running, and whether each one answers |
+| `inference-vitals stop` | Stop everything `start` started |
+| `inference-vitals proxy --to URL` | Measure an engine's requests on their way through (port 8401); see [connect.md](connect.md) |
+| `inference-vitals train -- COMMAND` | Run a fine-tune and follow it from what it prints; see [training.md](training.md) |
+| `inference-vitals watch-training LOG` | Follow a fine-tune from its log file |
 
 ## On Linux with NVIDIA GPUs (experimental)
 
@@ -62,9 +61,8 @@ driver (which brings `nvidia-smi`), [uv](https://docs.astral.sh/uv/) and Prometh
 # tarball from prometheus.io; only the `prometheus` binary needs to be on your PATH.
 # If the package starts its own service, stop it first (sudo systemctl disable --now prometheus):
 # inference-vitals runs its own copy on 127.0.0.1 with its own settings.
-git clone https://github.com/urbanmorph/inference-vitals.git
-cd inference-vitals
-uv run inference-vitals start
+uv tool install inference-vitals
+inference-vitals start
 xdg-open http://127.0.0.1:3000
 ```
 
@@ -93,10 +91,31 @@ works. The proxy works the same on Linux. Windows is not supported (under WSL2, 
   `ioreg -rn AppleSmartBattery` lists one; on Linux, `/sys/class/power_supply/BAT0`. Run `stop` and
   `start` after updating inference-vitals, so the exporter runs the new code.
 
+## Update
+
+```sh
+uv tool upgrade inference-vitals
+inference-vitals stop && inference-vitals start   # so the running services use the new version
+```
+
+Each release is listed, with what changed, on the
+[releases page](https://github.com/urbanmorph/inference-vitals/releases); watch the repository for
+releases on GitHub to be told of new ones.
+
+## From source
+
+To change inference-vitals itself, or to run the newest code before a release:
+
+```sh
+git clone https://github.com/urbanmorph/inference-vitals.git && cd inference-vitals
+uv run inference-vitals start   # the same commands, prefixed with `uv run`
+```
+
 ## Uninstall
 
 ```sh
-uv run inference-vitals stop
+inference-vitals stop
+uv tool uninstall inference-vitals
 rm -rf ~/.local/state/inference-vitals
 brew uninstall prometheus macmon   # on a Mac, if nothing else uses them (and grafana, if you added it)
 ```

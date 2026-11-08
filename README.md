@@ -5,6 +5,12 @@
   </picture>
 </h1>
 
+[![PyPI](https://img.shields.io/pypi/v/inference-vitals)](https://pypi.org/project/inference-vitals/)
+[![Python](https://img.shields.io/pypi/pyversions/inference-vitals)](https://pypi.org/project/inference-vitals/)
+[![Licence: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Release](https://github.com/urbanmorph/inference-vitals/actions/workflows/release.yml/badge.svg)](https://github.com/urbanmorph/inference-vitals/actions/workflows/release.yml)
+[![Apple Silicon · Linux with NVIDIA](https://img.shields.io/badge/runs_on-Apple_Silicon_%C2%B7_Linux_%2B_NVIDIA-555)](docs/install.md)
+
 **One screen for running and fine-tuning AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs
 (experimental): how fast the model is (or how well it is learning), how close it is to running out of
 memory, and how hot the machine is getting, on the same timeline.**
@@ -37,8 +43,8 @@ On an Apple Silicon Mac with [Homebrew](https://brew.sh):
 
 ```sh
 brew install uv prometheus macmon
-git clone https://github.com/urbanmorph/inference-vitals.git && cd inference-vitals
-uv run inference-vitals start
+uv tool install inference-vitals
+inference-vitals start
 open http://127.0.0.1:3000
 ```
 
@@ -49,9 +55,9 @@ The machine's numbers appear straight away. Linux with NVIDIA, Grafana, troubles
 
 | You run… | Then | More |
 | --- | --- | --- |
-| An engine with an HTTP API (Ollama, LM Studio, llama.cpp, MLX servers) | `uv run inference-vitals proxy --to http://127.0.0.1:11434` and point your app at `http://127.0.0.1:8401` | [connect.md](docs/connect.md) |
+| An engine with an HTTP API (Ollama, LM Studio, llama.cpp, MLX servers) | `inference-vitals proxy --to http://127.0.0.1:11434` and point your app at `http://127.0.0.1:8401` | [connect.md](docs/connect.md) |
 | Your own Python code | Three calls from `inference_vitals.metrics` | [connect.md](docs/connect.md#your-own-python-code-the-library) |
-| A fine-tune (mlx-vlm, mlx-lm, or any loop) | `uv run inference-vitals train -- <your training command>` | [training.md](docs/training.md) |
+| A fine-tune (mlx-vlm, mlx-lm, or any loop) | `inference-vitals train -- <your training command>` | [training.md](docs/training.md) |
 
 ## Privacy
 

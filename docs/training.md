@@ -10,7 +10,7 @@ publish numbers only. What the page then shows: [dashboard.md](dashboard.md#a-fi
 Its output passes through untouched; the page follows it:
 
 ```sh
-uv run inference-vitals train --name my-adapter --epochs 2 -- \
+inference-vitals train --name my-adapter --epochs 2 -- \
   python -m mlx_vlm.train --model-path ./model --data ./data --train-type lora --epochs 2
 ```
 
@@ -19,7 +19,7 @@ uv run inference-vitals train --name my-adapter --epochs 2 -- \
 For a trainer that is already writing one (Ctrl-C to stop):
 
 ```sh
-uv run inference-vitals watch-training train.log --name my-adapter
+inference-vitals watch-training train.log --name my-adapter
 ```
 
 Routes 1 and 2 read what the trainer prints, so they work only with trainers whose output they know:
@@ -37,7 +37,7 @@ When the trainer exits, `train` keeps the final numbers up until the dashboard h
 
 ## 3. Report from your own training loop
 
-Any framework:
+Any framework, once it is in your project (`uv add inference-vitals`, or `pip install inference-vitals`):
 
 ```python
 from inference_vitals import training

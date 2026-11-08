@@ -9,21 +9,21 @@ the short, task-shaped version. To change inference-vitals itself, read [CONTRIB
 
 ```sh
 brew install uv prometheus macmon          # Mac. Linux: uv, prometheus, and the NVIDIA driver
-git clone https://github.com/urbanmorph/inference-vitals.git && cd inference-vitals
-uv run inference-vitals start              # starts four services, each only if not running
+uv tool install inference-vitals          # puts `inference-vitals` on the PATH
+inference-vitals start                     # starts four services, each only if not running
 ```
 
-Then the page is at `http://127.0.0.1:3000`. `uv run inference-vitals status` must show every service
+Then the page is at `http://127.0.0.1:3000`. `inference-vitals status` must show every service
 answering; if one says NOT READY, its log path is printed: read it (a port in use is the usual cause).
 
 ## What the user wants → what to do
 
 | The user wants to watch… | Do this | They change |
 | --- | --- | --- |
-| Ollama, LM Studio, llama.cpp, an MLX server, any OpenAI-style engine | `uv run inference-vitals proxy --to http://127.0.0.1:<engine port>` (Ollama 11434, LM Studio 1234, llama.cpp 8080) | Their app's base URL to `http://127.0.0.1:8401` |
+| Ollama, LM Studio, llama.cpp, an MLX server, any OpenAI-style engine | `inference-vitals proxy --to http://127.0.0.1:<engine port>` (Ollama 11434, LM Studio 1234, llama.cpp 8080) | Their app's base URL to `http://127.0.0.1:8401` |
 | Their own Python inference loop | Add `inference_vitals.metrics.Metrics` and `serve(live, 8400)`: [docs/connect.md](docs/connect.md#your-own-python-code-the-library) | Three calls in the loop |
-| An mlx-vlm or mlx-lm fine-tune | `uv run inference-vitals train --name <run> -- <their training command>` | Nothing |
-| A fine-tune already writing a log | `uv run inference-vitals watch-training <log> --name <run>` | Nothing |
+| An mlx-vlm or mlx-lm fine-tune | `inference-vitals train --name <run> -- <their training command>` | Nothing |
+| A fine-tune already writing a log | `inference-vitals watch-training <log> --name <run>` | Nothing |
 | A fine-tune in another framework | Add `inference_vitals.training`: [docs/training.md](docs/training.md#3-report-from-your-own-training-loop) | A few calls in the loop |
 | Only the machine (memory, heat, power, battery) | Nothing more after `start` | Nothing |
 
@@ -34,7 +34,7 @@ Only one of the proxy, the library, `train` and `watch-training` can report at a
 
 - `curl -s 127.0.0.1:8400/metrics | head` shows `vllm:` or `vitals_` lines while something reports.
 - The page's band names the model (Running) or the run (Training).
-- `uv run inference-vitals status` lists every service as answering.
+- `inference-vitals status` lists every service as answering.
 
 ## Symptoms
 

@@ -80,3 +80,25 @@ def test_the_release_workflow_matches_the_pypi_trusted_publisher():
     )  # PyPI's pending publisher: release.yml, env pypi
     assert "pypa/gh-action-pypi-publish" in flow and "password" not in flow  # no stored token
     assert "uv run pytest" in flow and 'test "v$version" = "$GITHUB_REF_NAME"' in flow
+
+
+def test_the_readme_badges_point_at_this_package_and_its_release_workflow():
+    top = (ROOT / "README.md").read_text().split("**One screen", 1)[0]
+    assert "img.shields.io/pypi/v/inference-vitals" in top and "pypi.org/project/inference-vitals" in top
+    assert "img.shields.io/pypi/pyversions/inference-vitals" in top
+    assert "actions/workflows/release.yml/badge.svg" in top
+    assert (ROOT / ".github/workflows/release.yml").exists()
+    assert "license-MIT" in top and (ROOT / "LICENSE").read_text().startswith("MIT")
+
+
+def test_users_install_from_pypi_and_never_need_a_clone():
+    for doc in ["README.md", "AGENTS.md", "docs/install.md", "docs/connect.md", "docs/training.md"]:
+        text = (ROOT / doc).read_text()
+        source = re.search(r"## From source\n.*?(?=\n## )", text, re.S)  # install.md: running from a clone
+        text = text.replace(source.group(0), "") if source else text
+        assert "uv run inference-vitals" not in text, doc  # an installed tool runs as `inference-vitals`
+        assert "git clone" not in text, doc
+    assert "uv tool install inference-vitals" in (ROOT / "README.md").read_text()
+    install = (ROOT / "docs/install.md").read_text()
+    assert "uv tool upgrade inference-vitals" in install and "uv tool uninstall inference-vitals" in install
+    assert "uv add inference-vitals" in (ROOT / "docs/connect.md").read_text()  # the library, in one's project

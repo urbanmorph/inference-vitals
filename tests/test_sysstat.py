@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from inference_vitals import sysstat
 
 VM = """Mach Virtual Memory Statistics: (page size of 16384 bytes)
@@ -43,6 +47,7 @@ def test_mac_render_has_every_number_with_fake_readers():
     assert "vitals_host_thermal_state 2" in text
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads macOS itself")
 def test_thermal_state_is_read_live_from_macos():
     assert sysstat.thermal_state() in (0, 1, 2, 3)
 
@@ -218,6 +223,7 @@ def test_a_mac_read_starts_two_processes_and_the_battery_is_read_every_30_second
     assert reads == ["vm_stat", "sysctl", "ioreg"]
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads macOS itself")
 def test_the_thermal_state_reader_loads_macos_libraries_once():
     sysstat.thermal_state()
     sysstat.thermal_state()

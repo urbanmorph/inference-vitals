@@ -9,9 +9,9 @@ fine-tune, see [training.md](training.md). Only one thing can report on 8400 at 
 ## Any engine with an HTTP API: the proxy
 
 ```sh
-uv run inference-vitals proxy --to http://127.0.0.1:11434   # Ollama
-uv run inference-vitals proxy --to http://127.0.0.1:1234    # LM Studio
-uv run inference-vitals proxy --to http://127.0.0.1:8080    # llama.cpp server, mlx-lm / mlx-vlm server
+inference-vitals proxy --to http://127.0.0.1:11434   # Ollama
+inference-vitals proxy --to http://127.0.0.1:1234    # LM Studio
+inference-vitals proxy --to http://127.0.0.1:8080    # llama.cpp server, mlx-lm / mlx-vlm server
 ```
 
 Then point your app at `http://127.0.0.1:8401` instead of the engine. Every request goes through
@@ -33,7 +33,8 @@ engine's context limit.
 
 ## Your own Python code: the library
 
-Any engine (MLX, llama-cpp-python, PyTorch, a loop over an API), no extra packages:
+Any engine (MLX, llama-cpp-python, PyTorch, a loop over an API), no extra packages. Add it to your
+project (`uv add inference-vitals`, or `pip install inference-vitals`), then:
 
 ```python
 from inference_vitals.metrics import Metrics, serve
