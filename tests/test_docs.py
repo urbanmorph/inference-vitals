@@ -7,7 +7,7 @@ import re
 import pytest
 from helpers import known_metric_names
 
-from inference_vitals import monitor
+from inference_vitals import queries
 
 ROOT = pathlib.Path(__file__).parents[1]
 DOCS = [ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "CONTRIBUTING.md", ROOT / "CLAUDE.md", ROOT / "llms.txt",
@@ -37,7 +37,7 @@ def test_every_link_to_a_file_or_heading_in_the_repo_resolves(doc):
 def test_the_metric_list_and_the_code_agree_both_ways():
     known = known_metric_names()
     exported = {
-        HISTOGRAM.sub("", n) for n in known[monitor.MAC] | known[monitor.LINUX] if not n.startswith("macmon_")
+        HISTOGRAM.sub("", n) for n in known[queries.MAC] | known[queries.LINUX] if not n.startswith("macmon_")
     }
     listed = set(
         re.findall(r"`((?:vitals_|vitals:|vllm:)[a-z0-9_:]+)`", (ROOT / "docs" / "metrics.md").read_text())

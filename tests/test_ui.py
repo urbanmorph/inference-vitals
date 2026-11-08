@@ -8,7 +8,7 @@ import urllib.request
 import pytest
 from helpers import known_metric_names
 
-from inference_vitals import monitor, ui
+from inference_vitals import grafana, queries, ui
 
 NAME = re.compile(r"\b(?:vllm:|vitals_|vitals:|macmon_)[A-Za-z0-9_:]+")
 
@@ -38,7 +38,7 @@ def _queries(spec):
             yield chart["title"], t["expr"]
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_every_query_on_the_page_uses_a_metric_that_exists_on_that_platform(platform):
     known = known_metric_names()[platform]
     for title, q in _queries(ui.spec(platform)):
@@ -46,9 +46,9 @@ def test_every_query_on_the_page_uses_a_metric_that_exists_on_that_platform(plat
         assert names and names <= known, (platform, title, names - known)
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_the_page_has_the_same_tiles_and_sections_as_the_grafana_dashboard(platform):
-    d = monitor.dashboard(platform)
+    d = grafana.dashboard(platform)
     grafana_tiles = {p["title"] for p in d["panels"] if p["type"] == "stat" and p["title"] != "Running"}
     page = ui.spec(platform)
     assert {t["title"] for t in page["tiles"]["run"] + page["tiles"]["machine"]} == grafana_tiles
@@ -65,7 +65,7 @@ def test_the_page_has_the_same_tiles_and_sections_as_the_grafana_dashboard(platf
 def test_each_tile_gets_a_gauge_that_suits_its_number():
     kinds = {
         t["title"]: t["kind"]
-        for t in ui.spec(monitor.MAC)["tiles"]["run"] + ui.spec(monitor.MAC)["tiles"]["machine"]
+        for t in ui.spec(queries.MAC)["tiles"]["run"] + ui.spec(queries.MAC)["tiles"]["machine"]
     }
     assert kinds["Progress"] == "progress"
     assert kinds["Writing now"] == kinds["Reading speed"] == "speed"
@@ -74,12 +74,12 @@ def test_each_tile_gets_a_gauge_that_suits_its_number():
     assert kinds["GPU mem left"] == "split" and kinds["GPU busy"] == "ring" and kinds["Thermal"] == "steps"
     assert kinds["Answers cut off"] == kinds["Invalid answers"] == "ratio"
     assert kinds["Swap in/out"] == "spark" and kinds["Energy/token"] == "energy-per-token"
-    linux = {t["title"]: t["kind"] for t in ui.spec(monitor.LINUX)["tiles"]["machine"]}
+    linux = {t["title"]: t["kind"] for t in ui.spec(queries.LINUX)["tiles"]["machine"]}
     assert linux["GPU slowdown"] == "steps"
 
 
 def test_energy_adds_up_power_over_the_range_and_counts_only_the_ai_above_idle():
-    e = ui.spec(monitor.MAC)["energy"]
+    e = ui.spec(queries.MAC)["energy"]
     assert e["meter"] == "whole Mac" and "macmon_sys_power_watts" in e["total_query"]
 
     def fill(q, range_, step, base=""):  # as the page fills them in
@@ -89,12 +89,12 @@ def test_energy_adds_up_power_over_the_range_and_counts_only_the_ai_above_idle()
     assert total == "sum_over_time((max(macmon_sys_power_watts))[1h:15s]) * 15 / 3600"
     ai = fill(e["ai_query"], "6h", 60, base=12.5)
     assert "- 12.5" in ai and "vitals_current_phase" in ai and "[6h:60s]" in ai and ai.endswith("* 60 / 3600")
-    assert e["idle_query"] == monitor.IDLE  # recorded once a minute (monitor.rules_config)
-    assert ui.spec(monitor.LINUX)["energy"]["meter"] == "GPUs only"
+    assert e["idle_query"] == queries.IDLE  # recorded once a minute (queries.rules_config)
+    assert ui.spec(queries.LINUX)["energy"]["meter"] == "GPUs only"
 
 
 def test_the_subquery_step_grows_with_the_range_to_stay_cheap():
-    ranges = ui.spec(monitor.MAC)["ranges"]
+    ranges = ui.spec(queries.MAC)["ranges"]
     assert [r["key"] for r in ranges] == ["15m", "1h", "6h", "24h", "7d"]
     assert [r["step"] for r in ranges] == [15, 15, 15, 60, 300]
     # no energy sum takes more than ~2,000 steps
@@ -130,7 +130,7 @@ class _FakePrometheus:
 @pytest.fixture
 def page():
     prom = _FakePrometheus()
-    server = ui.serve(0, monitor.MAC, prom.url)
+    server = ui.serve(0, queries.MAC, prom.url)
     yield f"http://127.0.0.1:{server.server_address[1]}", prom
     server.shutdown()
     prom.server.shutdown()
@@ -149,7 +149,7 @@ def test_the_page_its_files_and_its_description_are_served(page):
     assert _get(url + "/page.css")[1].startswith("text/css")
     assert _get(url + "/favicon.svg")[1].startswith("image/svg+xml")
     spec = json.loads(_get(url + "/api/spec")[2])
-    assert spec["platform"] == monitor.MAC and spec["repo"] == monitor.REPO
+    assert spec["platform"] == queries.MAC and spec["repo"] == grafana.REPO
 
 
 def test_only_two_read_only_prometheus_queries_pass_through_and_only_with_their_own_parameters(page):
@@ -186,7 +186,7 @@ def test_the_server_listens_on_this_machine_only(page):
 
 
 def test_training_has_its_own_tiles_band_and_chart():
-    t = ui.spec(monitor.MAC)["training"]
+    t = ui.spec(queries.MAC)["training"]
     kinds = {x["title"]: x["kind"] for x in t["tiles"]}
     assert kinds["Progress"] == "progress" and kinds["Learning?"] == "steps"
     assert kinds["Train loss"] == kinds["Val loss"] == "spark" and kinds["Tokens/s"] == "speed"
@@ -197,7 +197,7 @@ def test_training_has_its_own_tiles_band_and_chart():
         "Memorising",
     ]  # in the order training.LEARNING, ... count
     assert t["band"]["names"][1:] == ["Step", "Validate", "Save"]
-    loss = ui.spec(monitor.MAC)["charts"]["Training and validation loss, against GPU temperature"]
+    loss = ui.spec(queries.MAC)["charts"]["Training and validation loss, against GPU temperature"]
     assert [x["legend"] for x in loss["targets"]][:2] == [
         "train loss {{run_name}}",
         "validation loss {{run_name}}",
@@ -205,18 +205,18 @@ def test_training_has_its_own_tiles_band_and_chart():
 
 
 def test_the_page_tells_a_fine_tune_from_a_model_run_by_which_reported_last():
-    mode = ui.spec(monitor.MAC)["mode"]
+    mode = ui.spec(queries.MAC)["mode"]
     assert "vitals_training_updated_seconds" in mode["training_query"]
     assert "vitals_run_updated_seconds" in mode["run_query"]
 
 
 def test_the_battery_time_comes_from_the_battery_itself():
-    b = ui.spec(monitor.LINUX)["battery"]
+    b = ui.spec(queries.LINUX)["battery"]
     assert "vitals_battery_draw_watts" in b["draw_query"] and "vitals_battery_remaining_wh" in b["wh_query"]
 
 
 def test_a_finished_fine_tune_stays_readable_with_its_last_numbers():
-    t = ui.spec(monitor.MAC)["training"]
+    t = ui.spec(queries.MAC)["training"]
     for tile in t["tiles"]:
         for k, q in tile.items():
             if k.endswith("query") and k != "max_query":  # max_query: the range's top, not the last value
@@ -229,7 +229,7 @@ def test_a_finished_fine_tune_stays_readable_with_its_last_numbers():
 
 
 def test_every_training_number_is_the_latest_runs_never_an_older_ones():
-    t = ui.spec(monitor.MAC)["training"]
+    t = ui.spec(queries.MAC)["training"]
     latest = "and on(run_name, run_id) topk(1, last_over_time(vitals_training_updated_seconds[7d]))"
     for tile in t["tiles"]:
         for k, q in tile.items():
@@ -241,7 +241,7 @@ def test_every_training_number_is_the_latest_runs_never_an_older_ones():
 
 
 def test_on_a_mac_gpu_memory_left_falls_back_to_the_whole_machine_when_no_model_reports_its_limit():
-    tile = next(t for t in ui.spec(monitor.MAC)["tiles"]["machine"] if t["title"] == "GPU mem left")
+    tile = next(t for t in ui.spec(queries.MAC)["tiles"]["machine"] if t["title"] == "GPU mem left")
     # the model's own figure first; else the shared memory macmon reports (Apple Silicon: GPU and CPU share it)
     assert tile["query"].startswith("min(vitals_gpu_memory_limit_bytes - vitals_peak_memory_bytes) or ")
     assert (
@@ -250,24 +250,24 @@ def test_on_a_mac_gpu_memory_left_falls_back_to_the_whole_machine_when_no_model_
     assert tile["limit_query"] == "max(vitals_gpu_memory_limit_bytes) or max(macmon_memory_ram_total_bytes)"
     assert tile["used_query"] == "max(vitals_peak_memory_bytes) or max(macmon_memory_ram_used_bytes)"
     assert tile["model_query"] == "max(vitals_gpu_memory_limit_bytes)"  # which of the two is shown
-    linux = next(t for t in ui.spec(monitor.LINUX)["tiles"]["machine"] if t["title"] == "GPU mem left")
+    linux = next(t for t in ui.spec(queries.LINUX)["tiles"]["machine"] if t["title"] == "GPU mem left")
     assert linux["query"] == "sum(vitals_gpu_memory_free_bytes)"  # nvidia-smi always knows
 
 
 def test_training_sits_with_the_model_sections_before_the_machine_ones():
-    for platform in monitor.PLATFORMS:
+    for platform in queries.PLATFORMS:
         labels = [v["label"] for v in ui.spec(platform)["views"]]
         assert labels == ["Favourites", "Speed", "Context", "Training", "Memory", "Hardware"], labels
 
 
 def test_moving_training_up_keeps_the_grafana_panel_ids_of_memory_and_hardware():
-    d = monitor.dashboard(monitor.MAC)
+    d = grafana.dashboard(queries.MAC)
     rows = {p["title"]: p for p in d["panels"] if p["type"] == "row"}
     ids = lambda title: [p["id"] for p in rows[title]["panels"]]
     assert min(ids("Training")) > max(ids("Hardware"))  # numbered after the others, as when it was added last
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_every_tab_names_charts_the_page_defines_and_each_chart_is_on_one_tab(platform):
     spec = ui.spec(platform)
     named = [c for v in spec["views"] for c in v["charts"]]
@@ -280,7 +280,7 @@ def test_every_tab_names_charts_the_page_defines_and_each_chart_is_on_one_tab(pl
     )
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_favourites_start_with_charts_that_exist(platform):
     spec = ui.spec(platform)
     fav = spec["favourites"]
@@ -291,13 +291,13 @@ def test_favourites_start_with_charts_that_exist(platform):
 
 
 def test_each_per_token_energy_counts_only_its_own_kind_of_work():
-    e = ui.spec(monitor.MAC)["energy"]
-    assert monitor.ACTIVE in e["ai_query"]  # the band's AI share: model runs and fine-tunes together
-    assert monitor.RUN_ACTIVE in e["ai_run_query"] and monitor.TRAIN_ACTIVE in e["ai_training_query"]
+    e = ui.spec(queries.MAC)["energy"]
+    assert queries.ACTIVE in e["ai_query"]  # the band's AI share: model runs and fine-tunes together
+    assert queries.RUN_ACTIVE in e["ai_run_query"] and queries.TRAIN_ACTIVE in e["ai_training_query"]
 
 
 def test_progress_is_worked_out_on_the_page_from_two_numbers_it_asks_for_anyway():
-    for platform in monitor.PLATFORMS:
+    for platform in queries.PLATFORMS:
         spec = ui.spec(platform)
         tiles = spec["tiles"]["run"] + spec["training"]["tiles"]
         for tile in (t for t in tiles if t["kind"] == "progress"):
@@ -307,33 +307,31 @@ def test_progress_is_worked_out_on_the_page_from_two_numbers_it_asks_for_anyway(
         assert run_tile["total_query"] == spec["running"]["total_query"]
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_the_page_and_grafana_colour_each_tile_at_the_same_levels(platform):
-    grafana = {}
-    for p in monitor.dashboard(platform)["panels"]:
+    levels = {}
+    for p in grafana.dashboard(platform)["panels"]:
         if p["type"] == "stat":
             steps = [
                 s["value"]
                 for s in p["fieldConfig"]["defaults"]["thresholds"]["steps"]
                 if s["value"] is not None
             ]
-            grafana[p["title"]] = sorted(steps)
+            levels[p["title"]] = sorted(steps)
     spec = ui.spec(platform)
     for tile in spec["tiles"]["run"] + spec["tiles"]["machine"]:
         if "warn" in tile:
             scale = tile.get("scale", 1)
-            assert sorted([tile["warn"] / scale, tile["bad"] / scale]) == grafana[tile["title"]], tile[
-                "title"
-            ]
+            assert sorted([tile["warn"] / scale, tile["bad"] / scale]) == levels[tile["title"]], tile["title"]
 
 
 def test_state_names_come_from_the_code_that_defines_the_states():
     from inference_vitals import metrics, training
 
-    spec = ui.spec(monitor.MAC)
-    assert spec["running"]["names"] == monitor.PHASE_NAMES
+    spec = ui.spec(queries.MAC)
+    assert spec["running"]["names"] == queries.PHASE_NAMES
     band = spec["training"]["band"]
     assert len(band["names"]) == len(training.PHASES) and len(band["parts"]) == len(training.PARTS) + 1
     learning = next(t for t in spec["training"]["tiles"] if t["title"] == "Learning?")
     assert len(learning["names"]) == 3 and learning["names"][training.MEMORISING] == "Memorising"
-    assert monitor.PHASE_NAMES[metrics.WRITING] == "Writing (decode)"
+    assert queries.PHASE_NAMES[metrics.WRITING] == "Writing (decode)"

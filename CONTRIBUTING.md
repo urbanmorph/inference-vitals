@@ -6,7 +6,7 @@ Issues and pull requests are welcome, and reports from Linux with real NVIDIA GP
 
 - Write the test first.
 - Keep the dashboard described in code: the page in `src/inference_vitals/ui.py` (and `page/`), the
-  Grafana dashboard in `monitor.py`. The page's tabs are taken from the Grafana dashboard's rows (each
+  Grafana dashboard in `grafana.py`, and the queries both ask in `queries.py`. The page's tabs are taken from the Grafana dashboard's rows (each
   led by the page's own chart where it has one), so the two show the same charts. Do not edit the
   dashboard by hand in Grafana.
 - A new metric goes in [docs/metrics.md](docs/metrics.md) too; a test fails until it does.
@@ -35,7 +35,9 @@ tested against. The test keeps the reader honest if the trainer changes its form
 
 | Path | What |
 | --- | --- |
-| `src/inference_vitals/monitor.py` | `start`, `stop`, `status`; Prometheus and Grafana configuration; the Grafana dashboard |
+| `src/inference_vitals/monitor.py` | `start`, `stop`, `status`; Prometheus and Grafana configuration |
+| `src/inference_vitals/queries.py` | The PromQL both dashboards ask, what each platform measures, state names |
+| `src/inference_vitals/grafana.py` | The Grafana dashboard, built from code |
 | `src/inference_vitals/ui.py`, `page/` | The dashboard page and its server |
 | `src/inference_vitals/metrics.py` | The library for model runs (port 8400) |
 | `src/inference_vitals/training.py`, `follow.py` | Fine-tunes: the library, and reading a trainer's output |

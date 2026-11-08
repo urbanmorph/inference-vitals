@@ -4,7 +4,7 @@ import re
 import pytest
 from helpers import known_metric_names
 
-from inference_vitals import monitor
+from inference_vitals import grafana, monitor, queries
 
 
 def _all_panels(dashboard):
@@ -19,17 +19,17 @@ def _exprs(dashboard):
             yield panel["title"], t["expr"]
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_every_dashboard_query_uses_a_metric_that_exists_on_that_platform(platform):
     known = known_metric_names()[platform]
-    for title, expr in _exprs(monitor.dashboard(platform)):
+    for title, expr in _exprs(grafana.dashboard(platform)):
         names = set(re.findall(r"\b(?:vllm:|vitals_|macmon_)[A-Za-z0-9_:]+", expr))
         assert names, (title, expr)
         assert names <= known, (platform, title, names - known)
 
 
 def test_the_linux_dashboard_shows_nvidia_numbers_where_the_mac_one_shows_apple_s():
-    tiles = {p["title"]: p for p in monitor.dashboard(monitor.LINUX)["panels"] if p["type"] == "stat"}
+    tiles = {p["title"]: p for p in grafana.dashboard(queries.LINUX)["panels"] if p["type"] == "stat"}
     assert "vitals_gpu_memory_free_bytes" in tiles["GPU mem left"]["targets"][0]["expr"]
     assert "vitals_gpu_slowdown_state" in tiles["GPU slowdown"]["targets"][0]["expr"]
     assert "GPU power" in tiles and "Mac power" not in tiles
@@ -39,7 +39,7 @@ def test_the_linux_dashboard_shows_nvidia_numbers_where_the_mac_one_shows_apple_
         if m["type"] == "value"
     }
     assert names == {"Thermal"}
-    titles = {p["title"] for p in _all_panels(monitor.dashboard(monitor.LINUX))}
+    titles = {p["title"] for p in _all_panels(grafana.dashboard(queries.LINUX))}
     assert (
         "GPU memory (VRAM), used against total" in titles
         and "MLX GPU memory, against the GPU limit" not in titles
@@ -47,11 +47,11 @@ def test_the_linux_dashboard_shows_nvidia_numbers_where_the_mac_one_shows_apple_
 
 
 def test_dashboard_panels_point_at_our_prometheus_and_are_json():
-    d = json.loads(json.dumps(monitor.dashboard()))
+    d = json.loads(json.dumps(grafana.dashboard()))
     assert d["uid"] == "inference-vitals" and d["refresh"] == "10s"
     for p in _all_panels(d):
         if p["type"] != "row":
-            assert p["datasource"]["uid"] == monitor.DATASOURCE_UID
+            assert p["datasource"]["uid"] == grafana.DATASOURCE_UID
 
 
 TOOLS = {
@@ -69,21 +69,21 @@ def test_everything_listens_on_localhost_only():
     ini = monitor.grafana_ini(monitor.STATE, "pw")
     assert "http_addr = 127.0.0.1" in ini
     assert "reporting_enabled = false" in ini and "check_for_updates = false" in ini
-    cmds = monitor.commands(monitor.STATE, monitor.MAC, TOOLS)
+    cmds = monitor.commands(monitor.STATE, queries.MAC, TOOLS)
     assert cmds["macmon"][-4:] == ["--host", "127.0.0.1", "--port", "9091"]
     assert "--web.listen-address=127.0.0.1:9090" in cmds["prometheus"]
     assert cmds["sysstat"][-2:] == ["--port", "9092"] and "127.0.0.1:9092" in prom
 
 
 def test_on_linux_the_nvidia_exporter_takes_macmon_s_place():
-    cmds = monitor.commands(monitor.STATE, monitor.LINUX, TOOLS, ui=monitor.GRAFANA_UI)
+    cmds = monitor.commands(monitor.STATE, queries.LINUX, TOOLS, ui=monitor.GRAFANA_UI)
     assert "macmon" not in cmds and cmds["gpustat"][-2:] == ["--port", "9091"]
     assert cmds["prometheus"][0] == "/usr/bin/prometheus"
     assert (
         cmds["grafana"][:2] == ["/usr/sbin/grafana", "server"]
         and "--homepath=/usr/share/grafana" in cmds["grafana"]
     )
-    assert "gpustat" not in monitor.commands(monitor.STATE, monitor.LINUX, {**TOOLS, "nvidia": False})
+    assert "gpustat" not in monitor.commands(monitor.STATE, queries.LINUX, {**TOOLS, "nvidia": False})
 
 
 def test_tools_are_found_on_the_path_and_grafana_s_home_beside_it(tmp_path):
@@ -92,7 +92,7 @@ def test_tools_are_found_on_the_path_and_grafana_s_home_beside_it(tmp_path):
         (tmp_path / "bin" / name).write_text("")
         (tmp_path / "bin" / name).chmod(0o755)
     (tmp_path / "share/grafana/conf").mkdir(parents=True)
-    tools = monitor.find_tools(monitor.LINUX, path=str(tmp_path / "bin"), homes=[tmp_path / "nowhere"])
+    tools = monitor.find_tools(queries.LINUX, path=str(tmp_path / "bin"), homes=[tmp_path / "nowhere"])
     assert tools["prometheus"] == str(tmp_path / "bin/prometheus")
     assert tools["grafana"] == str(
         tmp_path / "bin/grafana-server"
@@ -102,20 +102,20 @@ def test_tools_are_found_on_the_path_and_grafana_s_home_beside_it(tmp_path):
 
 def test_an_older_grafana_server_binary_takes_no_server_word():
     cmds = monitor.commands(
-        monitor.STATE, monitor.LINUX, {**TOOLS, "grafana": "/usr/sbin/grafana-server"}, ui=monitor.GRAFANA_UI
+        monitor.STATE, queries.LINUX, {**TOOLS, "grafana": "/usr/sbin/grafana-server"}, ui=monitor.GRAFANA_UI
     )
     assert cmds["grafana"][1].startswith("--homepath=")
 
 
 def test_the_platform_is_detected():
-    assert monitor.detect_platform("darwin") == monitor.MAC
-    assert monitor.detect_platform("linux") == monitor.LINUX
+    assert monitor.detect_platform("darwin") == queries.MAC
+    assert monitor.detect_platform("linux") == queries.LINUX
     with pytest.raises(SystemExit):
         monitor.detect_platform("win32")
 
 
 def test_overview_fits_one_screen_and_the_details_start_collapsed():
-    d = monitor.dashboard()
+    d = grafana.dashboard()
     top = d["panels"]
     assert top[0]["type"] == "row" and top[0]["title"] == "At a glance" and not top[0]["collapsed"]
     first_detail = next(i for i, p in enumerate(top) if p["type"] == "row" and i > 0)
@@ -126,7 +126,7 @@ def test_overview_fits_one_screen_and_the_details_start_collapsed():
 
 
 def test_overview_has_the_numbers_that_matter():
-    d = monitor.dashboard()
+    d = grafana.dashboard()
     end = next(i for i, p in enumerate(d["panels"]) if p["type"] == "row" and i > 0)
     titles = {p["title"] for p in d["panels"][1:end]}
     for want in (
@@ -147,7 +147,7 @@ def test_overview_has_the_numbers_that_matter():
 
 
 def test_overview_titles_fit_a_narrow_tile_and_every_panel_has_a_unique_id():
-    d = monitor.dashboard()
+    d = grafana.dashboard()
     end = next(i for i, p in enumerate(d["panels"]) if p["type"] == "row" and i > 0)
     for p in d["panels"][1:end]:
         if p["type"] == "stat":
@@ -157,7 +157,7 @@ def test_overview_titles_fit_a_narrow_tile_and_every_panel_has_a_unique_id():
 
 
 def test_an_empty_tile_shows_a_neutral_dash_not_a_red_no_data():
-    for p in _all_panels(monitor.dashboard()):
+    for p in _all_panels(grafana.dashboard()):
         if p["type"] == "stat":
             d = p["fieldConfig"]["defaults"]
             assert d["noValue"] == "–"
@@ -168,7 +168,7 @@ def test_an_empty_tile_shows_a_neutral_dash_not_a_red_no_data():
 
 
 def test_the_thermal_tile_is_live_and_named():
-    tile = next(p for p in monitor.dashboard()["panels"] if p.get("title") == "Thermal")
+    tile = next(p for p in grafana.dashboard()["panels"] if p.get("title") == "Thermal")
     assert tile["targets"][0]["expr"] == "max(vitals_host_thermal_state)"
     names = {
         m["options"][str(v)]["text"]
@@ -180,7 +180,7 @@ def test_the_thermal_tile_is_live_and_named():
 
 
 def test_tiles_show_plain_numbers_with_no_graph_behind_them_and_name_each_model():
-    tiles = [p for p in monitor.dashboard()["panels"] if p.get("type") == "stat" and p["title"] != "Running"]
+    tiles = [p for p in grafana.dashboard()["panels"] if p.get("type") == "stat" and p["title"] != "Running"]
     assert len(tiles) == 16
     for t in tiles:
         assert t["options"]["graphMode"] == "none", t["title"]
@@ -188,7 +188,7 @@ def test_tiles_show_plain_numbers_with_no_graph_behind_them_and_name_each_model(
 
 
 def test_every_tile_has_a_small_trend_strip_right_under_it():
-    panels = monitor.dashboard()["panels"]
+    panels = grafana.dashboard()["panels"]
     tiles = [p for p in panels if p["type"] == "stat" and p["title"] != "Running"]
     strips = {(p["gridPos"]["x"], p["gridPos"]["y"]): p for p in panels if p.get("title") == ""}
     assert len(strips) == len(tiles) == 16
@@ -199,11 +199,11 @@ def test_every_tile_has_a_small_trend_strip_right_under_it():
         assert [x["expr"] for x in s["targets"]] == [x["expr"] for x in t["targets"]]
         assert s["fieldConfig"]["defaults"]["custom"]["axisPlacement"] == "hidden"
         assert not s["options"]["legend"]["showLegend"]
-        assert s["fieldConfig"]["defaults"]["color"] == {"mode": "fixed", "fixedColor": monitor.STRIP_COLOUR}
+        assert s["fieldConfig"]["defaults"]["color"] == {"mode": "fixed", "fixedColor": grafana.STRIP_COLOUR}
 
 
 def test_panel_ids_the_screenshots_open_stay_put():
-    by_id = {p["id"]: p["title"] for p in _all_panels(monitor.dashboard())}
+    by_id = {p["id"]: p["title"] for p in _all_panels(grafana.dashboard())}
     assert "memory" in by_id[31].lower() and "power" in by_id[37].lower()
 
 
@@ -228,7 +228,7 @@ def test_grafana_is_view_only_and_nothing_can_be_sent_off_the_mac():
 
 def test_charts_split_by_model_list_their_lines_in_a_table_beside_the_chart():
     folded = [
-        p for row in monitor.dashboard()["panels"] if row["type"] == "row" for p in row.get("panels", [])
+        p for row in grafana.dashboard()["panels"] if row["type"] == "row" for p in row.get("panels", [])
     ]
     for p in folded:  # the overview's one wide chart keeps its short legend underneath
         per_model = any("{{model_name}}" in t["legendFormat"] for t in p["targets"])
@@ -240,13 +240,13 @@ def test_charts_split_by_model_list_their_lines_in_a_table_beside_the_chart():
 
 
 def test_the_gpu_limit_is_one_line_not_one_per_model():
-    memory = next(p for p in _all_panels(monitor.dashboard()) if p["title"].startswith("MLX GPU memory"))
+    memory = next(p for p in _all_panels(grafana.dashboard()) if p["title"].startswith("MLX GPU memory"))
     limit = [t for t in memory["targets"] if "gpu_memory_limit" in t["expr"]]
     assert len(limit) == 1 and limit[0]["expr"].startswith("max(") and "{{" not in limit[0]["legendFormat"]
 
 
 def test_folded_charts_never_overlap():
-    for row in monitor.dashboard()["panels"]:
+    for row in grafana.dashboard()["panels"]:
         cells = set()
         for p in row.get("panels", []):
             g = p["gridPos"]
@@ -257,7 +257,7 @@ def test_folded_charts_never_overlap():
 
 
 def test_tiles_show_only_what_is_reporting_now_and_strips_keep_the_history():
-    panels = monitor.dashboard()["panels"]
+    panels = grafana.dashboard()["panels"]
     for p in panels:
         if p["type"] == "stat":  # a finished run drops off at once, so a tile rarely holds two models
             assert all(t.get("instant") is True and t.get("range") is False for t in p["targets"]), p["title"]
@@ -266,23 +266,23 @@ def test_tiles_show_only_what_is_reporting_now_and_strips_keep_the_history():
 
 
 def test_missing_tools_are_named_with_how_to_install_them():
-    assert monitor.missing_tools(monitor.MAC, TOOLS) == []
-    gone = monitor.missing_tools(monitor.MAC, {**TOOLS, "macmon": None, "prometheus": None})
+    assert monitor.missing_tools(queries.MAC, TOOLS) == []
+    gone = monitor.missing_tools(queries.MAC, {**TOOLS, "macmon": None, "prometheus": None})
     assert any("macmon" in g and "brew install" in g for g in gone) and any("prometheus" in g for g in gone)
     linux = monitor.missing_tools(
-        monitor.LINUX, {**TOOLS, "grafana": None, "grafana_home": None}, monitor.GRAFANA_UI
+        queries.LINUX, {**TOOLS, "grafana": None, "grafana_home": None}, monitor.GRAFANA_UI
     )
     assert any("grafana" in g and "README" in g for g in linux)
-    assert monitor.missing_tools(monitor.LINUX, {**TOOLS, "macmon": None}) == []  # not needed on Linux
+    assert monitor.missing_tools(queries.LINUX, {**TOOLS, "macmon": None}) == []  # not needed on Linux
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_machine_tiles_always_show_one_number(platform):
     """A tile about the machine (not a model) is one figure, even when Prometheus briefly holds two copies
     of a series, e.g. after a job is renamed; so its query is wrapped in max(), min() or sum()."""
     machine = [
         p
-        for p in monitor.dashboard(platform)["panels"]
+        for p in grafana.dashboard(platform)["panels"]
         if p["type"] == "stat" and p["targets"][0]["legendFormat"] == ""
     ]
     assert len(machine) == 8
@@ -292,13 +292,13 @@ def test_machine_tiles_always_show_one_number(platform):
 
 
 def test_context_used_is_live_while_a_page_is_written_and_holds_between_pages():
-    tile = next(p for p in monitor.dashboard()["panels"] if p.get("title") == "Context used")
+    tile = next(p for p in grafana.dashboard()["panels"] if p.get("title") == "Context used")
     expr = tile["targets"][0]["expr"]
     assert "vitals_current_context_tokens or vitals_last_context_used_tokens" in expr
 
 
 def test_a_band_above_the_tiles_names_each_running_model_and_its_phase():
-    panels = monitor.dashboard()["panels"]
+    panels = grafana.dashboard()["panels"]
     band = next(p for p in panels if p.get("title") == "Running")
     assert band["type"] == "stat" and band["gridPos"]["w"] == 24 and band["gridPos"]["y"] == 1
     assert band["targets"][0]["expr"] == "vitals_current_phase"
@@ -314,7 +314,7 @@ def test_a_band_above_the_tiles_names_each_running_model_and_its_phase():
 
 
 def test_the_dashboard_links_to_the_repository():
-    links = monitor.dashboard()["links"]
+    links = grafana.dashboard()["links"]
     assert links == [
         {
             "title": "inference-vitals on GitHub",
@@ -332,17 +332,17 @@ def test_the_dashboard_links_to_the_repository():
 
 
 def test_the_page_is_the_default_and_grafana_is_optional():
-    page = monitor.commands(monitor.STATE, monitor.MAC, TOOLS)
+    page = monitor.commands(monitor.STATE, queries.MAC, TOOLS)
     assert "grafana" not in page
     assert page["page"][1:] == ["-m", "inference_vitals.ui", "--port", "3000", "--platform", "mac"]
-    grafana = monitor.commands(monitor.STATE, monitor.MAC, TOOLS, ui=monitor.GRAFANA_UI)
+    grafana = monitor.commands(monitor.STATE, queries.MAC, TOOLS, ui=monitor.GRAFANA_UI)
     assert "page" not in grafana and grafana["grafana"][0] == TOOLS["grafana"]
 
 
 def test_grafana_is_only_needed_when_asked_for():
     no_grafana = {**TOOLS, "grafana": None, "grafana_home": None}
-    assert monitor.missing_tools(monitor.MAC, no_grafana) == []
-    assert any("grafana" in m for m in monitor.missing_tools(monitor.MAC, no_grafana, monitor.GRAFANA_UI))
+    assert monitor.missing_tools(queries.MAC, no_grafana) == []
+    assert any("grafana" in m for m in monitor.missing_tools(queries.MAC, no_grafana, monitor.GRAFANA_UI))
 
 
 def test_start_takes_ui_grafana_and_nothing_else():
@@ -353,7 +353,7 @@ def test_start_takes_ui_grafana_and_nothing_else():
 
 
 def test_stop_and_status_cover_whichever_dashboard_runs():
-    assert {"page", "grafana"} <= set(monitor._names(monitor.MAC))
+    assert {"page", "grafana"} <= set(monitor._names(queries.MAC))
 
 
 def test_the_page_will_not_start_where_grafana_already_holds_the_port(tmp_path):
@@ -370,50 +370,71 @@ def test_the_address_printed_matches_the_dashboard():
     assert monitor.dashboard_url(monitor.GRAFANA_UI).endswith("/d/inference-vitals")
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_energy_per_token_is_the_model_s_share_of_power_over_tokens_everywhere(platform):
-    q = monitor.HW[platform]["joules"]
-    meter = monitor.HW[platform]["meter"]
+    q = queries.HW[platform]["joules"]
+    meter = queries.HW[platform]["meter"]
     assert q.startswith(f"sum(avg_over_time((clamp_min({meter} - scalar(max(vitals:idle_power_watts))")
     assert (
-        monitor.RUN_ACTIVE in q
+        queries.RUN_ACTIVE in q
         and "vitals_training_phase" not in q
         and "rate(vllm:generation_tokens_total[2m])" in q
     )
-    titles = {p["title"]: p for row in monitor.dashboard(platform)["panels"] for p in row.get("panels", [])}
+    titles = {p["title"]: p for row in grafana.dashboard(platform)["panels"] for p in row.get("panels", [])}
     chart = titles["Energy per answer token (the model's share of power ÷ tokens, over 2 min)"]
     assert chart["targets"][0]["expr"] == q
-    tile = next(p for p in monitor.dashboard(platform)["panels"] if p.get("title") == "Energy/token")
+    tile = next(p for p in grafana.dashboard(platform)["panels"] if p.get("title") == "Energy/token")
     assert tile["targets"][0]["expr"] == q
 
 
 def test_the_whole_machine_is_metered_on_a_mac_and_the_gpus_on_linux():
-    assert monitor.HW[monitor.MAC]["meter"] == "max(macmon_sys_power_watts)"
-    assert monitor.HW[monitor.LINUX]["meter"] == "sum(vitals_gpu_power_watts)"
+    assert queries.HW[queries.MAC]["meter"] == "max(macmon_sys_power_watts)"
+    assert queries.HW[queries.LINUX]["meter"] == "sum(vitals_gpu_power_watts)"
 
 
 def test_a_fine_tune_counts_as_the_ai_being_active_for_its_share_of_the_energy():
-    a = monitor.ACTIVE
+    a = queries.ACTIVE
     assert "vitals_current_phase" in a and "vitals_training_phase" in a
     assert "or vector(0)" in a and a.startswith("clamp_max(")  # one, or the other, or both: still just 1
 
 
 def test_energy_per_answer_token_counts_only_the_time_a_model_was_answering():
-    assert monitor.RUN_ACTIVE in monitor.ai_joules_per_token("max(macmon_sys_power_watts)")
-    assert "vitals_training_phase" not in monitor.RUN_ACTIVE and "vitals_current_phase" in monitor.RUN_ACTIVE
+    assert queries.RUN_ACTIVE in queries.ai_joules_per_token("max(macmon_sys_power_watts)")
+    assert "vitals_training_phase" not in queries.RUN_ACTIVE and "vitals_current_phase" in queries.RUN_ACTIVE
     assert (
-        "vitals_current_phase" not in monitor.TRAIN_ACTIVE and "vitals_training_phase" in monitor.TRAIN_ACTIVE
+        "vitals_current_phase" not in queries.TRAIN_ACTIVE and "vitals_training_phase" in queries.TRAIN_ACTIVE
     )
 
 
-@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_idle_power_is_worked_out_once_a_minute_by_prometheus_not_on_every_chart_refresh(platform, tmp_path):
-    rules = monitor.rules_config(platform)
-    meter = monitor.HW[platform]["meter"]
+    rules = queries.rules_config(platform)
+    meter = queries.HW[platform]["meter"]
     assert "record: vitals:idle_power_watts" in rules and "interval: 1m" in rules
     assert f"quantile_over_time(0.1, ({meter})[24h:1m])" in rules  # the 24-hour look-back, once a minute
     assert "rule_files" in monitor.prometheus_config() and "rules.yml" in monitor.prometheus_config()
-    assert monitor.IDLE == "max(vitals:idle_power_watts)"
-    assert "[24h" not in monitor.ai_joules_per_token(meter)  # the chart reads the recorded number
+    assert queries.IDLE == "max(vitals:idle_power_watts)"
+    assert "[24h" not in queries.ai_joules_per_token(meter)  # the chart reads the recorded number
     monitor.write_configs(tmp_path, platform)
     assert "vitals:idle_power_watts" in (tmp_path / "rules.yml").read_text()
+
+
+def test_the_modules_depend_one_way_queries_then_grafana_then_the_commands():
+    import ast
+    import pathlib
+
+    src = pathlib.Path(queries.__file__).parent
+
+    def imports(name):
+        tree = ast.parse((src / f"{name}.py").read_text())
+        found = set()
+        for n in ast.walk(tree):
+            if isinstance(n, ast.ImportFrom) and (n.module or "").startswith("inference_vitals"):
+                found |= (
+                    {n.module.split(".")[-1]} if n.module != "inference_vitals" else {a.name for a in n.names}
+                )
+        return found
+
+    assert imports("queries") == set()  # the vocabulary stands alone
+    assert imports("grafana") == {"queries"}
+    assert "ui" not in imports("monitor") and "monitor" not in imports("grafana")

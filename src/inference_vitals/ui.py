@@ -22,15 +22,16 @@ import urllib.parse
 import urllib.request
 
 from inference_vitals import monitor, training
+from inference_vitals.grafana import REPO, dashboard
 from inference_vitals.metrics import run_until_interrupt
-from inference_vitals.monitor import (
+from inference_vitals.queries import (
     ACTIVE,
     CONTEXT,
     HW,
     IDLE,
     LINUX,
     MAC,
-    REPO,
+    PHASE_NAMES,
     RUN_ACTIVE,
     SWAP_RATE,
     TRAIN_ACTIVE,
@@ -247,7 +248,7 @@ def _favourites(platform: str, views: list) -> dict:
 def _sections(platform: str) -> list[dict]:
     """The Grafana dashboard's folded sections, panel for panel: same titles, queries, legends and units."""
     out = []
-    for row in monitor.dashboard(platform)["panels"]:
+    for row in dashboard(platform)["panels"]:
         if row["type"] != "row" or not row.get("panels"):
             continue
         panels = [
@@ -270,7 +271,7 @@ def spec(platform: str) -> dict:
         "ranges": RANGES,
         "running": {
             "phase_query": "vitals_current_phase",
-            "names": monitor.PHASE_NAMES,
+            "names": PHASE_NAMES,
             "done_query": PAGES_DONE,
             "total_query": PAGES_TOTAL,
             "seconds_per_page_query": "sum(rate(vllm:e2e_request_latency_seconds_sum[10m])) / "

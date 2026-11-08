@@ -1,6 +1,6 @@
 """Shared by the tests: every metric name inference-vitals and its exporters can publish, per platform."""
 
-from inference_vitals import gpustat, metrics, monitor, sysstat, training
+from inference_vitals import gpustat, metrics, queries, sysstat, training
 
 
 def known_metric_names():
@@ -44,6 +44,6 @@ def known_metric_names():
     ours |= set(sysstat.BATTERY)  # on laptops, on either platform
     ours.add("vitals:idle_power_watts")  # recorded by Prometheus itself (rules_config)
     return {
-        monitor.MAC: ours | set(monitor.MACMON_METRICS) | set(sysstat.METRICS) | set(sysstat.MAC_ONLY),
-        monitor.LINUX: ours | set(gpustat.METRICS) | set(sysstat.METRICS) | set(sysstat.LINUX_ONLY),
+        queries.MAC: ours | set(queries.MACMON_METRICS) | set(sysstat.METRICS) | set(sysstat.MAC_ONLY),
+        queries.LINUX: ours | set(gpustat.METRICS) | set(sysstat.METRICS) | set(sysstat.LINUX_ONLY),
     }
