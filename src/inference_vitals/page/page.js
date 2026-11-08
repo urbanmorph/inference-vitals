@@ -196,7 +196,7 @@ async function renderTile(t) {
     }
     case "energy-per-token": {  // while training: per trained token
       const e = state.energy, training = state.mode === "training", tokens = e && (training ? e.trained : e.tokens);
-      const jt = e && e.ai !== null && tokens ? (e.ai * 3600) / tokens : null;
+      const jt = e ? perToken(e, state.mode) : null;
       return head(training ? "Energy/trained token" : t.title, jt, t.unit, "plain")
         + sub(jt === null ? "AI energy ÷ tokens" : `over ${text(tokens, "none")} ${training ? "trained " : ""}tokens`);
     }
@@ -222,6 +222,12 @@ function clockText(date, locale, timeZone) {  // "23:01:05 IST": local time, wit
     timeZone, timeZoneName: "short" }).formatToParts(date);
   const get = (type) => (parts.find((p) => p.type === type) || {}).value || "";
   return `${get("hour")}:${get("minute")}:${get("second")} ${get("timeZoneName")}`.trim();
+}
+
+// joules per token: the energy of that kind of work only (answering, or training) over its own tokens
+function perToken(e, mode) {
+  const [wh, tokens] = mode === "training" ? [e.aiTraining, e.trained] : [e.aiRun, e.tokens];
+  return wh === null || wh === undefined || !tokens ? null : +((wh * 3600) / tokens).toFixed(4);
 }
 
 // ---- which run the page is about, and the battery ----
@@ -299,11 +305,12 @@ async function renderEnergy() {
   const e = SPEC.energy, step = chosen().step;
   const filled = (q, base) => q.replaceAll("{range}", range).replaceAll("{step}", step).replaceAll("{base}", base);
   const base = await one(e.idle_query);
-  const [total, ai, tokens, trained] = await Promise.all([
-    one(filled(e.total_query)), base === null ? null : one(filled(e.ai_query, base)), one(filled(e.tokens_query)),
-    one(filled(e.trained_tokens_query)),
+  const ai_ = (q) => (base === null ? null : one(filled(q, base)));
+  const [total, ai, aiRun, aiTraining, tokens, trained] = await Promise.all([
+    one(filled(e.total_query)), ai_(e.ai_query), ai_(e.ai_run_query), ai_(e.ai_training_query),
+    one(filled(e.tokens_query)), one(filled(e.trained_tokens_query)),
   ]);
-  state.energy = { total, ai, tokens, trained };
+  state.energy = { total, ai, aiRun, aiTraining, tokens, trained };
   $("energy").textContent = energyText(total);
   $("energy-label").textContent = `in the last ${chosen().label} · ${e.meter}`;
   const share = total && ai !== null ? Math.round((ai / total) * 100) : null;
@@ -533,5 +540,5 @@ async function main() {
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
   module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText, runWindow,
-    favouritesFor, toggled, viewFrom, chartHeight };
+    favouritesFor, toggled, viewFrom, chartHeight, perToken };
 }

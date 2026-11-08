@@ -22,7 +22,19 @@ import urllib.parse
 import urllib.request
 
 from inference_vitals import monitor
-from inference_vitals.monitor import ACTIVE, CONTEXT, HW, LINUX, MAC, REPO, SWAP_RATE, TTFT_Q, idle_power
+from inference_vitals.monitor import (
+    ACTIVE,
+    CONTEXT,
+    HW,
+    LINUX,
+    MAC,
+    REPO,
+    RUN_ACTIVE,
+    SWAP_RATE,
+    TRAIN_ACTIVE,
+    TTFT_Q,
+    idle_power,
+)
 
 PAGE = pathlib.Path(__file__).parent / "page"
 FILES = {
@@ -51,12 +63,18 @@ def _energy(platform: str) -> dict:
     machine's usual idle draw while a model is reading or writing. Idle draw is the 10th percentile of the
     last day's power, so it follows the screen and background apps. On Linux only the GPUs are metered."""
     power = HW[platform]["meter"]
+
+    def ai(active):  # Wh above idle draw while `active` is 1
+        return f"sum_over_time((clamp_min({power} - {{base}}, 0) * {active})[{{range}}:{{step}}s]) * {{step}} / 3600"
+
     return {
         "meter": "whole Mac" if platform == MAC else "GPUs only",
         "power_query": power,
         "total_query": f"sum_over_time(({power})[{{range}}:{{step}}s]) * {{step}} / 3600",
         "idle_query": idle_power(power),
-        "ai_query": f"sum_over_time((clamp_min({power} - {{base}}, 0) * {ACTIVE})[{{range}}:{{step}}s]) * {{step}} / 3600",
+        "ai_query": ai(ACTIVE),  # the band: model runs and fine-tunes together
+        "ai_run_query": ai(RUN_ACTIVE),  # Energy/token: only while a model answered
+        "ai_training_query": ai(TRAIN_ACTIVE),  # Energy/trained token: only while a fine-tune trained
         "tokens_query": "sum(increase(vllm:generation_tokens_total[{range}]))",
         "trained_tokens_query": "sum(increase(vitals_training_tokens_total[{range}]))",
     }

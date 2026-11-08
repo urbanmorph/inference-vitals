@@ -140,3 +140,12 @@ test("charts share the space under the tiles, two to a row, never too small", ()
   assert.equal(chartHeight(500, 4), 167);  // two rows of two
   assert.equal(chartHeight(500, 12), 110);  // many: a floor, and the area scrolls
 });
+
+test("energy per token divides the energy of that kind of work by its own tokens", () => {
+  const { perToken } = page;
+  // 1 Wh answering over 1,000 tokens = 3.6 J each; the fine-tune's energy is not in it
+  assert.equal(perToken({ aiRun: 1, aiTraining: 5, tokens: 1000, trained: 2000 }, "inference"), 3.6);
+  assert.equal(perToken({ aiRun: 1, aiTraining: 5, tokens: 1000, trained: 2000 }, "training"), 9);
+  assert.equal(perToken({ aiRun: null, tokens: 1000 }, "inference"), null);
+  assert.equal(perToken({ aiRun: 1, tokens: 0 }, "inference"), null);
+});

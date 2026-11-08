@@ -421,7 +421,11 @@ def test_energy_per_token_is_the_model_s_share_of_power_over_tokens_everywhere(p
     assert q.startswith(
         f"sum(avg_over_time((clamp_min({meter} - scalar(quantile_over_time(0.1, ({meter})[24h:1m]))"
     )
-    assert monitor.ACTIVE in q and "rate(vllm:generation_tokens_total[2m])" in q
+    assert (
+        monitor.RUN_ACTIVE in q
+        and "vitals_training_phase" not in q
+        and "rate(vllm:generation_tokens_total[2m])" in q
+    )
     titles = {p["title"]: p for row in monitor.dashboard(platform)["panels"] for p in row.get("panels", [])}
     chart = titles["Energy per answer token (the model's share of power ÷ tokens, over 2 min)"]
     assert chart["targets"][0]["expr"] == q
@@ -438,3 +442,11 @@ def test_a_fine_tune_counts_as_the_ai_being_active_for_its_share_of_the_energy()
     a = monitor.ACTIVE
     assert "vitals_current_phase" in a and "vitals_training_phase" in a
     assert "or vector(0)" in a and a.startswith("clamp_max(")  # one, or the other, or both: still just 1
+
+
+def test_energy_per_answer_token_counts_only_the_time_a_model_was_answering():
+    assert monitor.RUN_ACTIVE in monitor.ai_joules_per_token("max(macmon_sys_power_watts)")
+    assert "vitals_training_phase" not in monitor.RUN_ACTIVE and "vitals_current_phase" in monitor.RUN_ACTIVE
+    assert (
+        "vitals_current_phase" not in monitor.TRAIN_ACTIVE and "vitals_training_phase" in monitor.TRAIN_ACTIVE
+    )

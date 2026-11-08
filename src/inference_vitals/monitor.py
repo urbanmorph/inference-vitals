@@ -252,10 +252,9 @@ SLOWDOWN_NAMES = ["None", "Power cap", "Thermal", "Hardware"]  # gpustat.slowdow
 # token is that share divided by the tokens written, here over a rolling 2 minutes; the page's band and tile
 # use the same split over the chosen range, so every energy figure agrees.
 # 1 while a model is reading or writing, or a fine-tune is training, else 0 (either may not be reporting)
-ACTIVE = (
-    "clamp_max(((max(vitals_current_phase) > bool 0) or vector(0))"
-    " + ((max(vitals_training_phase) > bool 0) or vector(0)), 1)"
-)
+RUN_ACTIVE = "((max(vitals_current_phase) > bool 0) or vector(0))"  # 1 while a model reads or writes
+TRAIN_ACTIVE = "((max(vitals_training_phase) > bool 0) or vector(0))"  # 1 while a fine-tune trains
+ACTIVE = f"clamp_max({RUN_ACTIVE} + {TRAIN_ACTIVE}, 1)"  # either: the AI's share of the energy
 
 
 def idle_power(meter: str) -> str:
@@ -265,7 +264,7 @@ def idle_power(meter: str) -> str:
 
 
 def ai_joules_per_token(meter: str) -> str:
-    share = f"clamp_min({meter} - scalar({idle_power(meter)}), 0) * {ACTIVE}"
+    share = f"clamp_min({meter} - scalar({idle_power(meter)}), 0) * {RUN_ACTIVE}"  # answering only
     return f"sum(avg_over_time(({share})[2m:15s]) / (sum(rate(vllm:generation_tokens_total[2m])) > 0))"
 
 

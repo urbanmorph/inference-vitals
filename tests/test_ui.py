@@ -284,3 +284,9 @@ def test_favourites_start_with_charts_that_exist(platform):
     assert fav["training"][0] == "Training and validation loss, against GPU temperature"
     for mode in ("inference", "training"):
         assert set(fav[mode]) <= set(spec["charts"]), mode
+
+
+def test_each_per_token_energy_counts_only_its_own_kind_of_work():
+    e = ui.spec(monitor.MAC)["energy"]
+    assert monitor.ACTIVE in e["ai_query"]  # the band's AI share: model runs and fine-tunes together
+    assert monitor.RUN_ACTIVE in e["ai_run_query"] and monitor.TRAIN_ACTIVE in e["ai_training_query"]
