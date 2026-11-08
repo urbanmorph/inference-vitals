@@ -246,3 +246,16 @@ def test_on_a_mac_gpu_memory_left_falls_back_to_the_whole_machine_when_no_model_
     assert tile["model_query"] == "max(vitals_gpu_memory_limit_bytes)"  # which of the two is shown
     linux = next(t for t in ui.spec(monitor.LINUX)["tiles"]["machine"] if t["title"] == "GPU mem left")
     assert linux["query"] == "sum(vitals_gpu_memory_free_bytes)"  # nvidia-smi always knows
+
+
+def test_training_sits_with_the_model_sections_before_the_machine_ones():
+    for platform in monitor.PLATFORMS:
+        titles = [s["title"] for s in ui.spec(platform)["sections"]]
+        assert titles == ["Speed detail", "Context and limits", "Training", "Memory", "Hardware"], titles
+
+
+def test_moving_training_up_keeps_the_grafana_panel_ids_of_memory_and_hardware():
+    d = monitor.dashboard(monitor.MAC)
+    rows = {p["title"]: p for p in d["panels"] if p["type"] == "row"}
+    ids = lambda title: [p["id"] for p in rows[title]["panels"]]
+    assert min(ids("Training")) > max(ids("Hardware"))  # numbered after the others, as when it was added last

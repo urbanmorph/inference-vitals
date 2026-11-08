@@ -34,11 +34,11 @@ Below that, sections stay folded until you open them:
 
 - **Speed detail**: TTFT per answer, median and 95th percentile, prefill and decode speed, model load time.
 - **Context and limits**: context used per answer against the limit; prompt, cached and answer tokens.
+- **Training**: loss, tokens per second, seconds per step, learning rate and memory of a fine-tune.
 - **Memory**: model memory (in use, peak, kept for reuse, KV cache estimate) against the GPU limit;
   swap activity; memory pressure.
 - **Hardware**: GPU, performance and efficiency core use; GPU, CPU, Neural Engine and whole-Mac power;
   temperatures; clock speeds; thermal state; fans.
-- **Training**: loss, tokens per second, seconds per step, learning rate and memory of a fine-tune.
 
 | Memory, opened | Hardware, opened |
 | --- | --- |

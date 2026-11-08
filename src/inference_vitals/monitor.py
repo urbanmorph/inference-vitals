@@ -667,9 +667,9 @@ def dashboard(platform: str = MAC) -> dict:
                 ),
             ],
         ),
-        _row("Memory", 20, panels=_memory_panels(platform, m)),
-        _row("Hardware", 21, panels=_hardware_panels(platform, m)),
-        _row("Training", 22, panels=_training_panels()),
+        _row("Training", 20, panels=_training_panels()),  # with the model's sections, before the machine's
+        _row("Memory", 21, panels=_memory_panels(platform, m)),
+        _row("Hardware", 22, panels=_hardware_panels(platform, m)),
     ]
     for row in details:
         for p in row["panels"]:
@@ -687,9 +687,10 @@ def dashboard(platform: str = MAC) -> dict:
         for p in [row, *row["panels"]]:
             p["gridPos"]["y"] += shift
     panel_id, strip_id = 0, STRIP_IDS
-    # ids let a single panel be opened on its own (?viewPanel=<id>); the band, added later, numbers last
-    # so the ids already in use stay put
-    for panel in overview + details + [running]:
+    # ids let a single panel be opened on its own (?viewPanel=<id>); panels added later number after the
+    # rest (the band, then Training) so the ids already in use stay put wherever a row sits
+    later = [r for r in details if r["title"] == "Training"]
+    for panel in overview + [r for r in details if r not in later] + [running] + later:
         for p in [panel, *panel.get("panels", [])]:
             if p["title"] == "":
                 p["id"], strip_id = strip_id, strip_id + 1
