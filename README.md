@@ -5,11 +5,11 @@
   </picture>
 </h1>
 
-[![PyPI](https://img.shields.io/pypi/v/inference-vitals)](https://pypi.org/project/inference-vitals/)
-[![Python](https://img.shields.io/pypi/pyversions/inference-vitals)](https://pypi.org/project/inference-vitals/)
-[![Licence: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/inference-vitals?cacheSeconds=3600)](https://pypi.org/project/inference-vitals/)
+[![Python](https://img.shields.io/pypi/pyversions/inference-vitals?cacheSeconds=86400)](https://pypi.org/project/inference-vitals/)
+[![Licence: MIT](https://img.shields.io/badge/license-MIT-blue?cacheSeconds=86400)](LICENSE)
 [![Tests](https://github.com/urbanmorph/inference-vitals/actions/workflows/test.yml/badge.svg)](https://github.com/urbanmorph/inference-vitals/actions/workflows/test.yml)
-[![Apple Silicon · Linux with NVIDIA](https://img.shields.io/badge/runs_on-Apple_Silicon_%C2%B7_Linux_%2B_NVIDIA-555)](docs/install.md)
+[![Apple Silicon · Linux with NVIDIA](https://img.shields.io/badge/runs_on-Apple_Silicon_%C2%B7_Linux_%2B_NVIDIA-555?cacheSeconds=86400)](docs/install.md)
 
 **One screen for running and fine-tuning AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs
 (experimental): how fast the model is (or how well it is learning), how close it is to running out of
