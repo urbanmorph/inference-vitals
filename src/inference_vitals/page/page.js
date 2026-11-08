@@ -158,64 +158,68 @@ function ofText(used, limit, tail) {  // "43.9 of 51.5 GB in use": short enough 
   return `${u.n}${u.u === l.u ? "" : ` ${u.u}`} of ${l.n} ${l.u}${tail}`;
 }
 
+// One renderer per tile kind: (tile, its value, the value scaled for display, its tone) -> the tile's HTML.
+const named = (t) => `<div class="name">${esc(t.title)}</div>`;
+const TILES = {
+  async progress(t) {  // done / total, both asked anyway
+    const [done, total] = await Promise.all([one(t.done_query), one(t.total_query)]);
+    const share = total && done !== null ? done / total : null;
+    return head(t.title, share === null ? null : share * 100, "%", share === null ? "plain" : "ok", 0)
+      + sub(total ? `${done} of ${total} ${t.of || "pages"}` : "no run reporting") + bar((share || 0) * 100, "ok");
+  },
+  async speed(t, v) {  // a speedometer against the highest in range
+    const top = await slow(`${range} ${t.max_query}`, () => one(fill(t.max_query))), max = niceMax(Math.max(top || 0, v || 0));
+    const f = fmt(v, t.unit);
+    return named(t) + arc(v, 0, max, f.n, f.u || t.unit, v === null || t.unit === "W" ? "plain" : "ok")
+      + `<div class="sub center">${top === null ? "" : `top in range ${text(top, t.unit)}`}</div>`;
+  },
+  async zones(t, v, scaled, tn) {  // an arc with its warning zones
+    return named(t) + arc(v, t.min, t.max, fmt(v, t.unit).n, t.unit, tn, [[t.min, t.warn, "ok"], [t.warn, t.bad, "warn"], [t.bad, t.max, "bad"]]);
+  },
+  async bar(t, v, scaled, tn) {
+    let note = "";
+    if (t.used_query) {
+      const [used, limit] = await Promise.all([one(t.used_query), one(t.limit_query)]);
+      if (used !== null && limit) note = `${Math.round(used).toLocaleString()} of ${Math.round(limit).toLocaleString()} tokens`;
+    }
+    return head(t.title, scaled, t.unit, tn) + sub(note) + bar(scaled, tn, t.ticks);
+  },
+  async split(t, v, scaled, tn) {  // with model_query: no model reporting its own figures means these are the machine's
+    const [used, limit, model] = await Promise.all([one(t.used_query), one(t.limit_query), t.model_query ? one(t.model_query) : 1]);
+    return head(t.title, v, t.unit, tn) + sub(used !== null && limit ? ofText(used, limit, model === null ? ", machine" : " in use") : "")
+      + bar(limit ? (used / limit) * 100 : 0, tn, [], "var(--muted)");
+  },
+  async ring(t, v, scaled) {
+    return named(t) + ring(v, fmt(scaled, "").n, "%", v === null ? "plain" : "ok");
+  },
+  async steps(t, v) {  // a state: one of t.names
+    const i = v === null ? null : Math.round(v);
+    return head(t.title, null, "", stepTone(i), 0, i === null ? "–" : t.names[i] || "–") + steps(t.names, i);
+  },
+  async ratio(t, v, scaled, tn) {
+    const of = await one(t.of_query);
+    return head(t.title, v, "", tn, 0) + sub(of ? `${v ?? 0} of ${of} pages` : "") + bar(of ? Math.max(v ? 2 : 0, (v / of) * 100) : 0, tn);
+  },
+  async spark(t, v, scaled, tn) {  // the number, with its trend over the range
+    const series = await slow(`${range} ${t.query}`, () => rangeQuery(t.query, 60));
+    const points = series.length ? series[0].values.map(([x, y]) => [x, parseFloat(y)]) : [];
+    const best = t.best_query ? await one(t.best_query) : null;
+    return head(t.title, v, t.unit, tn) + (best === null ? "" : sub(`best ${text(best, t.unit)}`)) + spark(points);
+  },
+  async "energy-per-token"(t) {  // while training: per trained token
+    const e = state.energy, training = state.mode === "training", tokens = e && (training ? e.trained : e.tokens);
+    const jt = e ? perToken(e, state.mode) : null;
+    return head(training ? "Energy/trained token" : t.title, jt, t.unit, "plain")
+      + sub(jt === null ? "AI energy ÷ tokens" : `over ${text(tokens, "none")} ${training ? "trained " : ""}tokens`);
+  },
+  async plain(t, v) {  // a number and a note
+    return head(t.title, v, t.unit, "plain") + sub(t.note);
+  },
+};
 async function renderTile(t) {
   const v = t.query ? await one(fill(t.query)) : null;
   const scaled = v === null ? null : v * (t.scale || 1);
-  const tn = tone(scaled, t);
-  switch (t.kind) {
-    case "progress": {  // done / total, both asked anyway
-      const [done, total] = await Promise.all([one(t.done_query), one(t.total_query)]);
-      const share = total && done !== null ? done / total : null;
-      return head(t.title, share === null ? null : share * 100, "%", share === null ? "plain" : "ok", 0)
-        + sub(total ? `${done} of ${total} ${t.of || "pages"}` : "no run reporting") + bar((share || 0) * 100, "ok");
-    }
-    case "speed": {
-      const top = await slow(`${range} ${t.max_query}`, () => one(fill(t.max_query))), max = niceMax(Math.max(top || 0, v || 0));
-      const f = fmt(v, t.unit);
-      return `<div class="name">${esc(t.title)}</div>${arc(v, 0, max, f.n, f.u || t.unit, v === null || t.unit === "W" ? "plain" : "ok")}`
-        + `<div class="sub center">${top === null ? "" : `top in range ${text(top, t.unit)}`}</div>`;
-    }
-    case "zones":
-      return `<div class="name">${esc(t.title)}</div>`
-        + arc(v, t.min, t.max, fmt(v, t.unit).n, t.unit, tn, [[t.min, t.warn, "ok"], [t.warn, t.bad, "warn"], [t.bad, t.max, "bad"]]);
-    case "bar": {
-      let note = "";
-      if (t.used_query) {
-        const [used, limit] = await Promise.all([one(t.used_query), one(t.limit_query)]);
-        if (used !== null && limit) note = `${Math.round(used).toLocaleString()} of ${Math.round(limit).toLocaleString()} tokens`;
-      }
-      return head(t.title, scaled, t.unit, tn) + sub(note) + bar(scaled, tn, t.ticks);
-    }
-    case "split": {  // with model_query: no model reporting its own figures means these are the machine's
-      const [used, limit, model] = await Promise.all([one(t.used_query), one(t.limit_query), t.model_query ? one(t.model_query) : 1]);
-      return head(t.title, v, t.unit, tn) + sub(used !== null && limit ? ofText(used, limit, model === null ? ", machine" : " in use") : "")
-        + bar(limit ? (used / limit) * 100 : 0, tn, [], "var(--muted)");
-    }
-    case "ring":
-      return `<div class="name">${esc(t.title)}</div>${ring(v, fmt(scaled, "").n, "%", v === null ? "plain" : "ok")}`;
-    case "steps": {
-      const i = v === null ? null : Math.round(v);
-      return head(t.title, null, "", stepTone(i), 0, i === null ? "–" : t.names[i] || "–") + steps(t.names, i);
-    }
-    case "ratio": {
-      const of = await one(t.of_query);
-      return head(t.title, v, "", tn, 0) + sub(of ? `${v ?? 0} of ${of} pages` : "") + bar(of ? Math.max(v ? 2 : 0, (v / of) * 100) : 0, tn);
-    }
-    case "spark": {
-      const series = await slow(`${range} ${t.query}`, () => rangeQuery(t.query, 60));
-      const points = series.length ? series[0].values.map(([x, y]) => [x, parseFloat(y)]) : [];
-      const best = t.best_query ? await one(t.best_query) : null;
-      return head(t.title, v, t.unit, tn) + (best === null ? "" : sub(`best ${text(best, t.unit)}`)) + spark(points);
-    }
-    case "energy-per-token": {  // while training: per trained token
-      const e = state.energy, training = state.mode === "training", tokens = e && (training ? e.trained : e.tokens);
-      const jt = e ? perToken(e, state.mode) : null;
-      return head(training ? "Energy/trained token" : t.title, jt, t.unit, "plain")
-        + sub(jt === null ? "AI energy ÷ tokens" : `over ${text(tokens, "none")} ${training ? "trained " : ""}tokens`);
-    }
-    default:
-      return head(t.title, v, t.unit, "plain") + sub(t.note);
-  }
+  return (TILES[t.kind] || TILES.plain)(t, v, scaled, tone(scaled, t));
 }
 async function renderTiles() {
   await Promise.all(["run", "machine"].map(async (group) => {
@@ -549,10 +553,13 @@ async function refresh(all = false) {
   if (all || now - last.charts >= CHARTS_EVERY) { last.charts = now; await renderCharts(); }
   $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
 }
-async function main() {
-  SPEC = await (await fetch("/api/spec")).json();
-  range = asked.get("range") || range;
+function useSpec(spec, wanted) {  // the dashboard's description, and a range it offers (1 h if not)
+  SPEC = spec;
+  range = wanted || range;
   if (!SPEC.ranges.some((r) => r.key === range)) range = "1h";
+}
+async function main() {
+  useSpec(await (await fetch("/api/spec")).json(), asked.get("range"));
   $("repo").href = SPEC.repo;
   $("repo-link").href = SPEC.repo;
   $("repo-link").textContent = SPEC.repo.replace(/^https:\/\//, "");
@@ -570,5 +577,5 @@ async function main() {
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
   module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText, runWindow,
-    favouritesFor, toggled, viewFrom, chartHeight, perToken, runState, starred, addressFor, sharedAsk };
+    favouritesFor, toggled, viewFrom, chartHeight, perToken, runState, starred, addressFor, sharedAsk, TILES, useSpec };
 }

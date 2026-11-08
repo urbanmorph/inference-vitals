@@ -186,3 +186,14 @@ test("a query asked twice in one refresh goes out once", async () => {
   const [a, b] = await Promise.all([sharedAsk(cache, "q", ask), sharedAsk(cache, "q", ask)]);
   assert.equal(a, 7); assert.equal(b, 7); assert.equal(calls, 1);
 });
+
+test("every tile renderer shows its tile's name, even before any number has arrived", async () => {
+  const { TILES, useSpec } = page;
+  useSpec({ ranges: [{ key: "1h", label: "1 h", seconds: 3600, step: 15 }] });
+  const tile = { title: "A tile", unit: "none", names: ["One", "Two"], min: 0, max: 10, warn: 5, bad: 8, query: "q",
+                 done_query: "d", total_query: "t", max_query: "m", used_query: "u", limit_query: "l", of_query: "o" };
+  for (const [kind, render] of Object.entries(TILES)) {
+    const html = await render(tile, null, null, "plain");
+    assert.match(html, /A tile/, kind);
+  }
+});
