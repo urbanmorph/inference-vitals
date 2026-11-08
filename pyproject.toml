@@ -5,8 +5,29 @@ description = "A dashboard for running and fine-tuning AI models on an Apple Sil
 authors = [
     { name = "Urban Morph" }
 ]
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []
+keywords = ["llm", "inference", "fine-tuning", "apple-silicon", "mlx", "nvidia", "prometheus", "dashboard", "monitoring"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/urbanmorph/inference-vitals"
+Documentation = "https://github.com/urbanmorph/inference-vitals/tree/main/docs"
+Issues = "https://github.com/urbanmorph/inference-vitals/issues"
+Changelog = "https://github.com/urbanmorph/inference-vitals/releases"
 
 [project.scripts]
 inference-vitals = "inference_vitals.monitor:main"

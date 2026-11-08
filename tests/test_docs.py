@@ -54,3 +54,29 @@ def test_every_command_the_docs_show_exists():
     monitor_src = (ROOT / "src" / "inference_vitals" / "monitor.py").read_text()
     for cmd in commands - {"start", "stop", "status"}:
         assert f'"{cmd}"' in monitor_src, cmd  # the command line knows it
+
+
+def test_the_pypi_readme_points_every_relative_link_at_the_released_tag():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("pypi_readme", ROOT / "scripts/pypi_readme.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    text = "![shot](docs/screenshots/a.png) [install](docs/install.md#mac) [web](https://x.org) [top](#why)"
+    out = mod.absolute(text, "v0.2.0")
+    base = "https://github.com/urbanmorph/inference-vitals"
+    assert f"![shot]({base}/raw/v0.2.0/docs/screenshots/a.png)" in out  # images: the file itself
+    assert f"[install]({base}/blob/v0.2.0/docs/install.md#mac)" in out
+    assert "[web](https://x.org)" in out and "[top](#why)" in out  # left alone
+    readme = mod.absolute((ROOT / "README.md").read_text(), "v0.2.0")
+    assert not re.findall(r"\]\((?!https?://|#|mailto:)", readme)  # nothing relative left
+
+
+def test_the_release_workflow_matches_the_pypi_trusted_publisher():
+    flow = (ROOT / ".github/workflows/release.yml").read_text()
+    assert 'tags: ["v*"]' in flow
+    assert (
+        "name: pypi" in flow and "id-token: write" in flow
+    )  # PyPI's pending publisher: release.yml, env pypi
+    assert "pypa/gh-action-pypi-publish" in flow and "password" not in flow  # no stored token
+    assert "uv run pytest" in flow and 'test "v$version" = "$GITHUB_REF_NAME"' in flow
