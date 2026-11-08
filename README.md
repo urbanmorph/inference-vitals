@@ -8,7 +8,7 @@
 [![PyPI](https://img.shields.io/pypi/v/inference-vitals)](https://pypi.org/project/inference-vitals/)
 [![Python](https://img.shields.io/pypi/pyversions/inference-vitals)](https://pypi.org/project/inference-vitals/)
 [![Licence: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Release](https://github.com/urbanmorph/inference-vitals/actions/workflows/release.yml/badge.svg)](https://github.com/urbanmorph/inference-vitals/actions/workflows/release.yml)
+[![Tests](https://github.com/urbanmorph/inference-vitals/actions/workflows/test.yml/badge.svg)](https://github.com/urbanmorph/inference-vitals/actions/workflows/test.yml)
 [![Apple Silicon · Linux with NVIDIA](https://img.shields.io/badge/runs_on-Apple_Silicon_%C2%B7_Linux_%2B_NVIDIA-555)](docs/install.md)
 
 **One screen for running and fine-tuning AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs
