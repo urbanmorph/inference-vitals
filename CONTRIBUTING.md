@@ -6,8 +6,9 @@ Issues and pull requests are welcome, and reports from Linux with real NVIDIA GP
 
 - Write the test first.
 - Keep the dashboard described in code: the page in `src/inference_vitals/ui.py` (and `page/`), the
-  Grafana dashboard in `monitor.py`. The page's folded sections are taken from the Grafana dashboard, so
-  the two show the same charts. Do not edit the dashboard by hand in Grafana.
+  Grafana dashboard in `monitor.py`. The page's tabs are taken from the Grafana dashboard's rows (each
+  led by the page's own chart where it has one), so the two show the same charts. Do not edit the
+  dashboard by hand in Grafana.
 - A new metric goes in [docs/metrics.md](docs/metrics.md) too; a test fails until it does.
 - Run the checks below before sending it.
 

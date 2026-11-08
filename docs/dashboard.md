@@ -2,13 +2,38 @@
 
 [← README](../README.md)
 
+The page fits one screen: a band saying what is running, two rows of tiles (the run and the machine),
+then tabs that swap the charts below them, so the live numbers never scroll out of view.
+
+## The tabs and Favourites
+
+**Favourites · Speed · Context · Training · Memory · Hardware.** Each tab shows its charts two to a row,
+sized to the space under the tiles; a tab with more scrolls inside its own area. Every chart has a ☆ in
+its title: star it and it joins **Favourites**, the first tab; click the ★ to take it off. Until you star
+your own, Favourites shows writing speed against GPU temperature, the model's memory against the GPU limit
+and swap activity, led by the loss chart during a fine-tune (a fine-tune's charts appear there only while
+the page is showing one). Your stars are kept in this browser; "reset to the defaults" brings the starting
+set back. Every chart has a crosshair: point at any moment for each line's reading.
+
+| Tab | Its charts |
+| --- | --- |
+| **Speed** | Writing speed against GPU temperature (usually the first thing to look at when a long run slows down); TTFT per answer, median and 95th percentile; prefill and decode speed; tokens so far on the current answer; model load time |
+| **Context** | Context used per answer against the limit; prompt, cached and answer tokens; answers cut off, invalid or over the context limit, and failed requests |
+| **Training** | Training and validation loss against GPU temperature; tokens trained per second; seconds per step; learning rate; the trainer's peak memory |
+| **Memory** | Model memory (in use, peak, kept for reuse, KV cache estimate) against the GPU limit; swap activity; memory pressure; memory and swap in use |
+| **Hardware** | GPU, performance and efficiency core use; GPU, CPU, Neural Engine and whole-Mac power; temperatures; clock speeds; thermal state; energy per answer token; fans |
+
+| Memory | Hardware |
+| --- | --- |
+| ![Model memory against the GPU limit, swap and memory pressure](screenshots/memory.png) | ![Core use, power by part, temperatures, clocks and fans](screenshots/power.png) |
+
 ## A model run
 
 **At a glance**: a **Running** band naming each model that is reporting, what it is doing (Idle,
 Reading (prefill) or Writing (decode)) and how far through its run it is; the **energy** the machine used
 in the chosen time range and how much of it was the model's; then sixteen numbers, each drawn the way that
 suits it (a progress bar, a speedometer, an arc with warning zones, a fill bar, a ring, steps for a state,
-or a trend line where the pattern over time matters more than the reading now), and one chart:
+or a trend line where the pattern over time matters more than the reading now):
 
 | The run | The machine (Mac; differences on Linux below) |
 | --- | --- |
@@ -24,25 +49,8 @@ or a trend line where the pattern over time matters more than the reading now), 
 On Linux with NVIDIA, the machine column changes where the hardware differs: **GPU mem left** is free
 VRAM (summed over GPUs), **GPU slowdown** replaces Thermal (the GPU's own reasons for running below full
 speed: None, Power cap, which is normal under full load, Thermal, Hardware), **GPU power** replaces Mac
-power, and **Energy/token** counts the GPUs only. The folded sections show VRAM used against total per
-GPU, GPU power against its limit, GPU and CPU temperatures, clocks, slowdown and fan speed.
-
-The chart plots writing speed against GPU temperature, which is usually the first thing to look at
-when a long run slows down. Every chart has a crosshair: point at any moment for each line's reading.
-
-Below that, sections stay folded until you open them:
-
-- **Speed detail**: TTFT per answer, median and 95th percentile, prefill and decode speed, model load time.
-- **Context and limits**: context used per answer against the limit; prompt, cached and answer tokens.
-- **Training**: loss, tokens per second, seconds per step, learning rate and memory of a fine-tune.
-- **Memory**: model memory (in use, peak, kept for reuse, KV cache estimate) against the GPU limit;
-  swap activity; memory pressure.
-- **Hardware**: GPU, performance and efficiency core use; GPU, CPU, Neural Engine and whole-Mac power;
-  temperatures; clock speeds; thermal state; fans.
-
-| Memory, opened | Hardware, opened |
-| --- | --- |
-| ![Model memory against the GPU limit, swap and memory pressure](screenshots/memory.png) | ![Core use, power by part, temperatures, clocks and fans](screenshots/power.png) |
+power, and **Energy/token** counts the GPUs only. Their Memory and Hardware tabs show VRAM used against
+total per GPU, GPU power against its limit, GPU and CPU temperatures, clocks, slowdown and fan speed.
 
 ## A fine-tune
 
@@ -55,9 +63,9 @@ energy per *trained* token.
 
 **Learning?** reads Learning while validation loss still falls, Watch when it stops improving, and
 **Memorising** when it rises while training loss still falls: the model is learning its examples by heart
-rather than learning from them. The chart plots both losses against GPU temperature. The training charts
-(this one and the folded Training section) span the latest run from its start to its end, or to now while
-it runs, whatever range is chosen, so a one-minute run fills them as a two-hour one does. A finished fine-tune
+rather than learning from them. The Training tab's charts (and any you have starred) span the latest run
+from its start to its end, or to now while it runs, whatever range is chosen, so a one-minute run fills
+them as a two-hour one does. A finished fine-tune
 stays on the page, marked finished, with its last numbers, until a model run reports (or for a week).
 How to get a fine-tune on the page: [training.md](training.md).
 
@@ -84,7 +92,8 @@ finishes. On a machine with no battery it does not appear.
 ## Themes and address options
 
 Light and dark follow your system; the ◐ button switches. The page's address takes a few options, handy
-for bookmarks: `?range=` (`15m`, `1h`, `6h`, `24h`, `7d`), `?theme=` (`light`, `dark`) and `?open=`
-(sections to show opened, e.g. `?open=memory,hardware`). The logo links back to the repository.
+for bookmarks: `?range=` (`15m`, `1h`, `6h`, `24h`, `7d`), `?theme=` (`light`, `dark`) and `?view=` (the
+tab: `favourites`, `speed`, `context`, `training`, `memory`, `hardware`; older `?open=` links still work).
+The logo links back to the repository.
 
 ![The same view in the light theme](screenshots/at-a-glance-light.png)

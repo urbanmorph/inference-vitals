@@ -107,3 +107,36 @@ test("training charts span the run, with a little room either side, whatever the
   assert.deepEqual(runWindow(1000, 1600, true, 2000), [950, 2050]);  // running: start to now
   assert.equal(runWindow(null, 1600, false, 2000), null);  // nothing to fit: the chosen range
 });
+
+test("favourites: your own stars, else the defaults; a fine-tune's charts only while one is shown", () => {
+  const { favouritesFor } = page;
+  const defaults = { inference: ["speed", "memory"], training: ["loss", "speed", "memory"] };
+  const training = new Set(["loss", "tps"]);
+  assert.deepEqual(favouritesFor(null, defaults, "inference", training), ["speed", "memory"]);
+  assert.deepEqual(favouritesFor(null, defaults, "training", training), ["loss", "speed", "memory"]);
+  assert.deepEqual(favouritesFor('["tps","swap"]', defaults, "inference", training), ["swap"]);  // no fine-tune: its chart waits
+  assert.deepEqual(favouritesFor('["tps","swap"]', defaults, "training", training), ["tps", "swap"]);
+  assert.deepEqual(favouritesFor("not json", defaults, "inference", training), ["speed", "memory"]);  // a broken store: defaults
+});
+
+test("a star adds a chart to favourites, and a second click takes it off", () => {
+  const { toggled } = page;
+  assert.deepEqual(toggled(["a"], "b"), ["a", "b"]);
+  assert.deepEqual(toggled(["a", "b"], "a"), ["b"]);
+});
+
+test("the address picks the tab, and old ?open= links still land on theirs", () => {
+  const { viewFrom } = page;
+  const keys = ["favourites", "speed", "memory"];
+  assert.equal(viewFrom(new URLSearchParams("view=memory"), keys), "memory");
+  assert.equal(viewFrom(new URLSearchParams("open=memory,hardware"), keys), "memory");
+  assert.equal(viewFrom(new URLSearchParams("view=nope"), keys), "favourites");
+  assert.equal(viewFrom(new URLSearchParams(""), keys), "favourites");
+});
+
+test("charts share the space under the tiles, two to a row, never too small", () => {
+  const { chartHeight } = page;
+  assert.equal(chartHeight(500, 1), 422);  // one chart: the whole area, less its title and legend
+  assert.equal(chartHeight(500, 4), 167);  // two rows of two
+  assert.equal(chartHeight(500, 12), 110);  // many: a floor, and the area scrolls
+});

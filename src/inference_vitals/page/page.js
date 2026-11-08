@@ -8,7 +8,7 @@ const store = {  // per-browser conveniences; the page works without them
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private window */ } },
 };
-// ?theme=, ?range= and ?open= (sections to show opened), for links and screenshots
+// ?theme=, ?range= and ?view= (the tab shown), for links and screenshots
 const asked = typeof location === "undefined" ? new URLSearchParams() : new URLSearchParams(location.search);
 let SPEC = null, range = store.get("iv-range") || "1h";
 const chosen = () => SPEC.ranges.find((r) => r.key === range);  // the chosen range: key, label, seconds, step
@@ -234,7 +234,6 @@ async function decideMode() {
   const [t, r] = await slow("mode", () => Promise.all([one(m.training_query), one(m.run_query)]));
   state.mode = modeOf(t, r);
   $("band-label").textContent = state.mode === "training" ? "Training" : "Running";
-  $("run-h").textContent = state.mode === "training" ? "The training run" : "The run";
 }
 function batteryText(b, left) {  // a laptop's battery: on power its charge; on battery the time left at its draw now
   if (b.percent === null || b.percent === undefined) return { hidden: true, text: "", warn: false };  // no battery
@@ -260,6 +259,12 @@ function duration(s) {
   if (m < 1) return "under a minute";
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
 }
+async function trainingWindow() {  // the latest fine-tune's span, in either mode: its charts span the run
+  const b = SPEC.training.band;
+  const [started, updated, phase] = await slow("window", () =>
+    Promise.all([one(b.started_query), one(b.updated_query), one(b.now_phase_query)]));
+  state.window = runWindow(started, updated, phase !== null && phase > 0, Date.now() / 1000);
+}
 async function renderTrainingBand() {
   const b = SPEC.training.band, runs = await instant(b.phase_query);
   const [part, step, total, epoch, epochs, perStep] = await Promise.all(
@@ -273,8 +278,6 @@ async function renderTrainingBand() {
     return `<span class="model">${esc(p.metric.run_name || "training")} <span class="phases">${pills}</span></span>`;
   }).join("") || `<span class="idle">No fine-tune has reported this week.</span>`;
   const running = runs.some((p) => Math.round(parseFloat(p.value[1])) > 0);  // a finished run needs no time
-  const [started, updated] = await Promise.all([one(b.started_query), one(b.updated_query)]);
-  state.window = runWindow(started, updated, running, Date.now() / 1000);
   state.left = running && total && step !== null && perStep ? (total - step) * perStep : null;
   $("run-meta").textContent = total ? `step ${step} of ${total}${epochs ? ` · epoch ${epoch ?? 1} of ${epochs}` : ""}`
     + `${state.left ? ` · ${leftText(state.left)}` : ""}` : "";
@@ -347,6 +350,8 @@ function hover(el, ev) {  // the crosshair: a line at the pointer and a tooltip 
 }
 const label = (legend, metric) => (legend || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => metric[k] || "").trim() || metric.model_name || "";
 const PALETTE = ["var(--accent)", "#e3b341", "#58a6ff", "#bc8cff", "#39c5cf", "var(--muted)"];  // heat is the right axis's own
+const star = (el, panel) => { const on = el.dataset.fav === "1";
+  return `<button class="star${on ? " on" : ""}" data-star="${esc(panel.title)}" title="${on ? "Remove from" : "Add to"} Favourites">${on ? "★" : "☆"}</button>`; };
 async function renderChart(el, panel, win = null) {
   const series = [];
   await Promise.all(panel.targets.map(async (t, ti) => {
@@ -358,7 +363,7 @@ async function renderChart(el, panel, win = null) {
   series.sort((a, b) => a.order - b.order);
   const svgW = el.clientWidth || 600, H = el.dataset.h ? +el.dataset.h : 180;
   if (!series.some((s) => s.points.length)) {
-    el.innerHTML = `<h3>${esc(panel.title)}</h3><div class="empty">nothing recorded ${win ? "in this run" : `in the last ${chosen().label}`}</div>`;
+    el.innerHTML = `<h3>${esc(panel.title)}${star(el, panel)}</h3><div class="empty">nothing recorded ${win ? "in this run" : `in the last ${chosen().label}`}</div>`;
     return;
   }
   const [start, end] = win || [Date.now() / 1000 - chosen().seconds, Date.now() / 1000];
@@ -392,7 +397,7 @@ async function renderChart(el, panel, win = null) {
   g += `<line class="xhair" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/>`;
   el.plot = { series, colors, start, end, step: stepFor(240, end - start), left: L, right: R, width: svgW };
   const whole = win ? `<span class="muted"> · the whole run, ${esc(duration(end - start))}</span>` : "";
-  el.innerHTML = `<h3>${esc(panel.title)}${whole}</h3><svg width="100%" height="${H}" viewBox="0 0 ${svgW} ${H}">${g}</svg>
+  el.innerHTML = `<h3>${esc(panel.title)}${whole}${star(el, panel)}</h3><svg width="100%" height="${H}" viewBox="0 0 ${svgW} ${H}">${g}</svg>
     <div class="legend">${series.map((s, i) => `<span><i style="background:${colors[i]}"></i>${esc(s.name || panel.title)}</span>`).join("")}</div>
     <div class="tip" hidden></div>`;
   if (el.lastPointer && el.matches(":hover")) hover(el, el.lastPointer);  // a redraw keeps the crosshair
@@ -402,25 +407,67 @@ async function renderChart(el, panel, win = null) {
     el.addEventListener("mouseleave", () => { el.querySelector(".tip").hidden = true; const l = el.querySelector(".xhair"); if (l) l.style.display = "none"; });
   }
 }
-function buildSections() {
-  $("sections").innerHTML = SPEC.sections.map((s, i) => `<details data-i="${i}"><summary>${esc(s.title)}</summary>
-    <div class="grid2">${s.panels.map((_, k) => `<div class="chart" id="p${i}-${k}" data-h="170"></div>`).join("")}</div></details>`).join("");
-  const open = (asked.get("open") || "").toLowerCase().split(",");
-  document.querySelectorAll("details").forEach((d) => {
-    d.addEventListener("toggle", () => d.open && renderSection(+d.dataset.i));
-    if (open.includes(SPEC.sections[+d.dataset.i].title.toLowerCase())) d.open = true;
-  });
+// ---- tabs: Favourites, then one per kind of chart ----
+function favouritesFor(stored, defaults, mode, trainingCharts) {  // your stars, else the defaults
+  let list = null;
+  try { list = stored ? JSON.parse(stored) : null; } catch (e) { list = null; }
+  if (!Array.isArray(list)) list = defaults[mode];
+  return mode === "training" ? list : list.filter((t) => !trainingCharts.has(t));  // a fine-tune's charts wait for one
 }
-async function renderSection(i) {
-  await new Promise((done) => requestAnimationFrame(done));  // a just-opened section has its width after a frame
-  const win = SPEC.sections[i].title === "Training" ? state.window : null;  // the training section spans the run
-  await Promise.all(SPEC.sections[i].panels.map((p, k) => renderChart($(`p${i}-${k}`), p, win)));
+const toggled = (list, title) => (list.includes(title) ? list.filter((t) => t !== title) : [...list, title]);
+function viewFrom(params, keys) {  // ?view=memory; an old ?open=memory,hardware link opens its first
+  const asked = (params.get("view") || (params.get("open") || "").split(",")[0] || "").toLowerCase();
+  return keys.includes(asked) ? asked : "favourites";
+}
+function chartHeight(area, n) {  // two to a row (one alone takes the width), sharing the area; a floor, then scroll
+  const rows = n <= 1 ? 1 : Math.ceil(n / 2), gap = 10, chrome = 78;  // chrome: a chart's title, legend, padding
+  return Math.max(110, Math.round((area - gap * (rows - 1)) / rows - chrome));
+}
+let view = "favourites";
+const trainingCharts = () => new Set(SPEC.views.find((v) => v.run).charts);
+const favourites = () => favouritesFor(store.get("iv-favourites"), SPEC.favourites, state.mode, trainingCharts());
+function chartsOf(key) { return key === "favourites" ? favourites() : SPEC.views.find((v) => v.key === key).charts; }
+function tabs() {
+  $("views").innerHTML = SPEC.views.map((v) => `<button role="tab" data-v="${v.key}" class="${v.key === view ? "on" : ""}">${esc(v.label)}</button>`).join("");
+  $("views").onclick = (ev) => {
+    const k = ev.target.dataset.v;
+    if (!k) return;
+    view = k;
+    document.querySelectorAll("#views button").forEach((b) => b.classList.toggle("on", b.dataset.v === k));
+    if (typeof history !== "undefined") history.replaceState(null, "", `?${new URLSearchParams({ ...Object.fromEntries(asked), view: k })}`);
+    buildView();
+    renderCharts();
+  };
+  $("fav-reset").onclick = () => { store.set("iv-favourites", ""); buildView(); renderCharts(); };
+}
+function buildView() {  // the boxes for the chosen tab's charts; renderCharts fills them
+  const titles = chartsOf(view), grid = $("grid");
+  $("view-hint").textContent = view === "favourites"
+    ? `${titles.length} starred · kept in this browser · ☆ a chart in any tab to add it`
+    : "☆ adds a chart to Favourites";
+  $("fav-reset").hidden = view !== "favourites" || !store.get("iv-favourites");
+  grid.className = `grid${titles.length <= 1 ? " one" : ""}`;
+  grid.innerHTML = titles.length ? titles.map((t, i) => `<div class="chart" id="c${i}" data-title="${esc(t)}"></div>`).join("")
+    : `<div class="empty">No favourites yet: star ☆ a chart in any tab to add it here.</div>`;
+  grid.onclick = (ev) => {
+    const t = ev.target.dataset && ev.target.dataset.star;
+    if (!t) return;
+    store.set("iv-favourites", JSON.stringify(toggled(favourites(), t)));
+    if (view === "favourites") buildView();
+    renderCharts();
+  };
 }
 async function renderCharts() {
-  $("main").dataset.h = 220;
-  const training = state.mode === "training";
-  await renderChart($("main"), training ? SPEC.training.main : SPEC.main, training ? state.window : null);
-  await Promise.all([...document.querySelectorAll("details[open]")].map((d) => renderSection(+d.dataset.i)));
+  await new Promise((done) => requestAnimationFrame(done));  // sizes are known after a frame
+  const titles = chartsOf(view), fav = new Set(favourites()), run = trainingCharts();
+  const h = chartHeight($("area").clientHeight - 20, titles.length);
+  await Promise.all(titles.map(async (t, i) => {
+    const el = $(`c${i}`);
+    if (!el) return;
+    el.dataset.h = h;
+    el.dataset.fav = fav.has(t) ? "1" : "";
+    await renderChart(el, SPEC.charts[t], run.has(t) ? state.window : null);
+  }));
 }
 
 // ---- controls and refresh ----
@@ -457,8 +504,8 @@ async function refresh(all = false) {
   if (document.hidden && !all) return;  // nothing to draw while the tab is not visible
   const now = Date.now(), was = state.mode;
   await decideMode();
-  if (state.mode !== was) all = true;  // a fine-tune started or a model run did: redraw the chart now
-  const jobs = [renderRunning().then(renderBattery)];
+  if (state.mode !== was) { all = true; if (view === "favourites") buildView(); }  // its favourites change with it
+  const jobs = [renderRunning().then(renderBattery), trainingWindow()];
   if (all || now - last.energy >= ENERGY_EVERY) { last.energy = now; jobs.push(renderEnergy()); }
   await Promise.all(jobs);
   await renderTiles();  // after energy, which Energy/token uses
@@ -472,7 +519,8 @@ async function main() {
   $("repo").href = SPEC.repo;
   $("repo-link").href = SPEC.repo;
   $("repo-link").textContent = SPEC.repo.replace(/^https:\/\//, "");
-  theme(); ranges(); rateBox(); buildSections();
+  view = viewFrom(asked, SPEC.views.map((v) => v.key));
+  theme(); ranges(); rateBox(); tabs(); buildView();
   await refresh(true);
   setInterval(refresh, TILES_EVERY);
   const tick = () => { $("clock").textContent = clockText(new Date()); };
@@ -484,5 +532,6 @@ async function main() {
 }
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
-  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText, runWindow };
+  module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText, runWindow,
+    favouritesFor, toggled, viewFrom, chartHeight };
 }

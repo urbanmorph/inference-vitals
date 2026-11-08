@@ -40,13 +40,15 @@
     </div>
   </section>
 
-  <h2 id="run-h">The run</h2>
-  <div class="tiles" id="run"></div>
-  <h2>The machine</h2>
-  <div class="tiles" id="machine"></div>
+  <div class="tiles" id="run" aria-label="The run"></div>
+  <div class="tiles machine" id="machine" aria-label="The machine"></div>
 
-  <div class="chart" id="main"></div>
-  <div id="sections"></div>
+  <div class="views">
+    <div class="pills" id="views" role="tablist" aria-label="Charts"></div>
+    <span class="hint" id="view-hint"></span>
+    <a id="fav-reset" hidden>reset to the defaults</a>
+  </div>
+  <div class="area" id="area"><div class="grid" id="grid"></div></div>
 
   <footer>
     <span>Everything stays on this machine: numbers only, on 127.0.0.1.</span>

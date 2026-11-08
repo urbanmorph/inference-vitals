@@ -28,7 +28,8 @@ started swapping, or a page was simply longer.
 - **Battery** on a laptop: the charge, and on battery how long it will last at this load, with a warning
   when it will not outlast the run.
 
-The page explains each tile: [docs/dashboard.md](docs/dashboard.md).
+It fits one screen: the live numbers stay in view while tabs swap the charts below them, and you star the
+charts you want together in **Favourites**. Every tile and tab: [docs/dashboard.md](docs/dashboard.md).
 
 ## Quick start
 

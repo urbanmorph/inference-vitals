@@ -33,11 +33,7 @@ def _queries(spec):
         for k, v in src.items():
             if k.endswith("query"):
                 yield part, v
-    for chart in [
-        spec["main"],
-        spec["training"]["main"],
-        *(p for s in spec["sections"] for p in s["panels"]),
-    ]:
+    for chart in spec["charts"].values():
         for t in chart["targets"]:
             yield chart["title"], t["expr"]
 
@@ -57,8 +53,13 @@ def test_the_page_has_the_same_tiles_and_sections_as_the_grafana_dashboard(platf
     page = ui.spec(platform)
     assert {t["title"] for t in page["tiles"]["run"] + page["tiles"]["machine"]} == grafana_tiles
     rows = [p for p in d["panels"] if p["type"] == "row" and p.get("panels")]
-    assert [s["title"] for s in page["sections"]] == [r["title"] for r in rows]
-    assert [len(s["panels"]) for s in page["sections"]] == [len(r["panels"]) for r in rows]
+    tabs = [v for v in page["views"] if v["key"] != "favourites"]
+    assert [v["row"] for v in tabs] == [r["title"] for r in rows]  # one tab per Grafana row, in its order
+    shown = {c for v in tabs for c in v["charts"]}
+    for (
+        r
+    ) in rows:  # every Grafana chart is on the page, except the loss chart the page draws with temperature
+        assert {p["title"] for p in r["panels"]} - {"Training and validation loss"} <= shown, r["title"]
 
 
 def test_each_tile_gets_a_gauge_that_suits_its_number():
@@ -196,7 +197,8 @@ def test_training_has_its_own_tiles_band_and_chart():
         "Memorising",
     ]  # in the order training.LEARNING, ... count
     assert t["band"]["names"][1:] == ["Step", "Validate", "Save"]
-    assert [x["legend"] for x in t["main"]["targets"]][:2] == [
+    loss = ui.spec(monitor.MAC)["charts"]["Training and validation loss, against GPU temperature"]
+    assert [x["legend"] for x in loss["targets"]][:2] == [
         "train loss {{run_name}}",
         "validation loss {{run_name}}",
     ]
@@ -250,8 +252,8 @@ def test_on_a_mac_gpu_memory_left_falls_back_to_the_whole_machine_when_no_model_
 
 def test_training_sits_with_the_model_sections_before_the_machine_ones():
     for platform in monitor.PLATFORMS:
-        titles = [s["title"] for s in ui.spec(platform)["sections"]]
-        assert titles == ["Speed detail", "Context and limits", "Training", "Memory", "Hardware"], titles
+        labels = [v["label"] for v in ui.spec(platform)["views"]]
+        assert labels == ["Favourites", "Speed", "Context", "Training", "Memory", "Hardware"], labels
 
 
 def test_moving_training_up_keeps_the_grafana_panel_ids_of_memory_and_hardware():
@@ -259,3 +261,26 @@ def test_moving_training_up_keeps_the_grafana_panel_ids_of_memory_and_hardware()
     rows = {p["title"]: p for p in d["panels"] if p["type"] == "row"}
     ids = lambda title: [p["id"] for p in rows[title]["panels"]]
     assert min(ids("Training")) > max(ids("Hardware"))  # numbered after the others, as when it was added last
+
+
+@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+def test_every_tab_names_charts_the_page_defines_and_each_chart_is_on_one_tab(platform):
+    spec = ui.spec(platform)
+    named = [c for v in spec["views"] for c in v["charts"]]
+    assert set(named) == set(spec["charts"]) and len(named) == len(set(named))
+    speed = next(v for v in spec["views"] if v["key"] == "speed")
+    assert speed["charts"][0] == "Writing speed against GPU temperature"  # the old main chart leads Speed
+    training = next(v for v in spec["views"] if v["key"] == "training")
+    assert (
+        training["charts"][0] == "Training and validation loss, against GPU temperature" and training["run"]
+    )
+
+
+@pytest.mark.parametrize("platform", monitor.PLATFORMS)
+def test_favourites_start_with_charts_that_exist(platform):
+    spec = ui.spec(platform)
+    fav = spec["favourites"]
+    assert fav["inference"][0] == "Writing speed against GPU temperature"
+    assert fav["training"][0] == "Training and validation loss, against GPU temperature"
+    for mode in ("inference", "training"):
+        assert set(fav[mode]) <= set(spec["charts"]), mode

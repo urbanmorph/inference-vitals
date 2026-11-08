@@ -7,7 +7,7 @@ set -eu
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 OUT="$(cd "$(dirname "$0")" && pwd)/screenshots"
 PROFILE="$(mktemp -d)"
-URL="http://127.0.0.1:3000/?range=${RANGE:-15m}"  # the page; it also takes ?theme= and ?open= (sections opened)
+URL="http://127.0.0.1:3000/?range=${RANGE:-15m}"  # the page; it also takes ?theme= and ?view= (the tab shown)
 mkdir -p "$OUT"
 
 shot() { # name, url, width, height
@@ -18,11 +18,11 @@ shot() { # name, url, width, height
 
 shot warm-up "$URL" 800 600 && rm -f "$OUT/warm-up.png"  # a first load in a fresh profile can come back empty
 if [ "${WHAT:-run}" = training ]; then
-  shot training-dark "$URL&theme=dark" 1512 980
+  shot training-dark "$URL&theme=dark&view=favourites" 1512 945
 else
-  shot at-a-glance-dark "$URL&theme=dark" 1512 980
-  shot at-a-glance-light "$URL&theme=light" 1512 980
-  shot memory "$URL&theme=dark&open=memory" 1512 1700
-  shot power "$URL&theme=dark&open=hardware" 1512 2100
+  shot at-a-glance-dark "$URL&theme=dark&view=favourites" 1512 945   # a 14-inch MacBook's screen
+  shot at-a-glance-light "$URL&theme=light&view=favourites" 1512 945
+  shot memory "$URL&theme=dark&view=memory" 1512 945
+  shot power "$URL&theme=dark&view=hardware" 1512 945
 fi
 rm -rf "$PROFILE"

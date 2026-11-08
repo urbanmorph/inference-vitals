@@ -150,10 +150,30 @@ def _training(platform: str) -> dict:
             "step_seconds_query": t("step_seconds"),
             # the run's span: its charts show just the run, however long or short
             "started_query": t("started_seconds"),
+            "now_phase_query": t("phase"),  # one number: above 0 while the latest run is still going
             "updated_query": t("updated_seconds"),
         },
         "tiles": tiles,
-        "main": {
+    }
+
+
+def _lead_charts(platform: str) -> dict:
+    """The page's own charts, which lead their tabs: each against GPU temperature, the first thing to look
+    at when a run slows down."""
+    temp = {"expr": HW[platform]["gpu_temp"], "legend": "GPU °C", "unit": "°C", "axis": "right"}
+    return {
+        "Speed detail": {
+            "title": "Writing speed against GPU temperature",
+            "targets": [
+                {
+                    "expr": "vitals_current_generation_tps",
+                    "legend": "tokens/s {{model_name}}",
+                    "unit": "tok/s",
+                },
+                temp,
+            ],
+        },
+        "Training": {
             "title": "Training and validation loss, against GPU temperature",
             "targets": [
                 {"expr": "vitals_training_loss", "legend": "train loss {{run_name}}", "unit": "none"},
@@ -162,10 +182,47 @@ def _training(platform: str) -> dict:
                     "legend": "validation loss {{run_name}}",
                     "unit": "none",
                 },
-                {"expr": HW[platform]["gpu_temp"], "legend": "GPU °C", "unit": "°C", "axis": "right"},
+                temp,
             ],
         },
     }
+
+
+TAB = {
+    "Speed detail": "Speed",
+    "Context and limits": "Context",
+}  # a Grafana row's name, short enough for a tab
+REPLACED = {"Training": "Training and validation loss"}  # Grafana's chart the page draws with temperature
+
+
+def _views(platform: str) -> tuple[dict, list]:
+    """(every chart by title, the tabs). Favourites first; then one tab per folded Grafana row, in its order,
+    holding that row's charts, led by the page's own chart where there is one."""
+    leads, charts = _lead_charts(platform), {}
+    views = [{"key": "favourites", "label": "Favourites", "charts": []}]
+    for row in _sections(platform):
+        panels = [p for p in row["panels"] if p["title"] != REPLACED.get(row["title"])]
+        panels = ([leads[row["title"]]] if row["title"] in leads else []) + panels
+        charts.update({p["title"]: p for p in panels})
+        label = TAB.get(row["title"], row["title"])
+        view = {
+            "key": label.lower(),
+            "label": label,
+            "row": row["title"],
+            "charts": [p["title"] for p in panels],
+        }
+        if row["title"] == "Training":
+            view["run"] = True  # its charts span the latest fine-tune, whatever the range
+        views.append(view)
+    return charts, views
+
+
+def _favourites(platform: str, views: list) -> dict:
+    """What Favourites shows until someone stars their own: the speed chart, the model's memory, swap; and
+    in a fine-tune, its loss chart first."""
+    by_key = {v["key"]: v["charts"] for v in views}
+    common = [by_key["speed"][0], by_key["memory"][0], "Swap activity (in and out)"]
+    return {"inference": common, "training": [by_key["training"][0], *common]}
 
 
 def _sections(platform: str) -> list[dict]:
@@ -187,7 +244,7 @@ def _sections(platform: str) -> list[dict]:
 
 
 def spec(platform: str) -> dict:
-    hw = HW[platform]
+    charts, views = _views(platform)
     return {
         "platform": platform,
         "repo": REPO,
@@ -215,18 +272,9 @@ def spec(platform: str) -> dict:
             "on_power_query": "max(vitals_battery_on_power)",
             "draw_query": "max(vitals_battery_draw_watts)",
         },
-        "main": {
-            "title": "Writing speed against GPU temperature",
-            "targets": [
-                {
-                    "expr": "vitals_current_generation_tps",
-                    "legend": "tokens/s {{model_name}}",
-                    "unit": "tok/s",
-                },
-                {"expr": hw["gpu_temp"], "legend": "GPU °C", "unit": "°C", "axis": "right"},
-            ],
-        },
-        "sections": _sections(platform),
+        "charts": charts,
+        "views": views,
+        "favourites": _favourites(platform, views),
     }
 
 
