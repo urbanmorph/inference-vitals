@@ -2,3 +2,6 @@
 __pycache__/
 *.tmp
 .DS_Store
+
+# drafts and notes that are not part of the project (posts, plans in progress)
+supporting-docs/
