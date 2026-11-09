@@ -11,8 +11,8 @@ then tabs that swap the charts below them, so the live numbers never scroll out 
 sized to the space under the tiles; a tab with more scrolls inside its own area. Every chart has a ☆ in
 its title: star it and it joins **Favourites**, the first tab; click the ★ to take it off. Until you star
 your own, Favourites shows writing speed against GPU temperature, the model's memory against the GPU limit
-and swap activity; during a fine-tune, its loss and tokens trained per second, the machine's memory (on
-Linux, VRAM) and swap activity instead. Your stars are kept in this browser; "reset to the defaults" brings the starting
+and swap activity; during a fine-tune, its loss and tokens trained per second, its peak memory against the
+GPU limit (on Linux, against VRAM) and swap activity instead. Your stars are kept in this browser; "reset to the defaults" brings the starting
 set back. Every chart has a crosshair: point at any moment for each line's reading.
 
 | Tab | Its charts |
@@ -20,7 +20,7 @@ set back. Every chart has a crosshair: point at any moment for each line's readi
 | **Speed** | Writing speed against GPU temperature (usually the first thing to look at when a long run slows down); TTFT per answer, median and 95th percentile; prefill and decode speed; tokens so far on the current answer; model load time |
 | **Context** | Context used per answer against the limit; prompt, cached and answer tokens; answers cut off, invalid or over the context limit, and failed requests |
 | **Training** | Training and validation loss against GPU temperature; tokens trained per second; seconds per step; learning rate; the trainer's peak memory |
-| **Memory** | Model memory (in use, peak, kept for reuse, KV cache estimate) against the GPU limit; swap activity; memory pressure; memory and swap in use |
+| **Memory** | Model memory (in use, peak, kept for reuse, KV cache estimate) and a fine-tune's peak, against the GPU limit; swap activity; memory pressure; memory and swap in use |
 | **Hardware** | GPU, performance and efficiency core use; GPU, CPU, Neural Engine and whole-Mac power; temperatures; clock speeds; thermal state; energy per answer token; fans |
 
 | Memory | Hardware |

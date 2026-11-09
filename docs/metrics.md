@@ -74,6 +74,7 @@ On `127.0.0.1:9092` (both platforms) and, on Linux, `127.0.0.1:9091` (the NVIDIA
 | `vitals_host_memory_free_percent` | Free memory as the system measures it (memory pressure on a Mac) |
 | `vitals_host_swap_total_bytes`, `vitals_host_swap_used_bytes` | Swap size and swap in use |
 | `vitals_host_thermal_state` | Mac only: 0 nominal, 1 fair, 2 serious, 3 critical |
+| `vitals_host_gpu_memory_limit_bytes` | Mac only: the most memory the GPU should use (Metal's recommended working set, what MLX treats as its limit) |
 | `vitals_host_cpu_busy_ratio` | Linux only: CPU busy share |
 | `vitals_host_cpu_temp_celsius` | Linux only: the CPU's own temperature |
 | `vitals_battery_percent` | Laptops: charge |

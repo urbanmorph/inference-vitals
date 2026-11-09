@@ -38,7 +38,7 @@ METRICS = [  # on every platform
     "vitals_host_swap_total_bytes",
     "vitals_host_swap_used_bytes",
 ]
-MAC_ONLY = ["vitals_host_thermal_state"]
+MAC_ONLY = ["vitals_host_thermal_state", "vitals_host_gpu_memory_limit_bytes"]
 BATTERY = [  # laptops only; the draw only while it runs on the battery
     "vitals_battery_percent",
     "vitals_battery_remaining_wh",
@@ -86,6 +86,23 @@ def _objc():
     send_long = ctypes.CFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
     info = send(objc.objc_getClass(b"NSProcessInfo"), objc.sel_registerName(b"processInfo"))
     return info, send_long, objc.sel_registerName(b"thermalState")
+
+
+@functools.cache
+def gpu_memory_limit():
+    """The most memory the GPU should use (Metal's recommendedMaxWorkingSetSize, what MLX reads as its
+    limit), in bytes; read once, as it does not change while the Mac runs. None if it cannot be read."""
+    try:
+        objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+        metal = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/Metal.framework/Metal")
+        metal.MTLCreateSystemDefaultDevice.restype = ctypes.c_void_p
+        objc.sel_registerName.restype, objc.sel_registerName.argtypes = ctypes.c_void_p, [ctypes.c_char_p]
+        device = metal.MTLCreateSystemDefaultDevice()
+        send = ctypes.CFUNCTYPE(ctypes.c_uint64, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
+        limit = send(device, objc.sel_registerName(b"recommendedMaxWorkingSetSize")) if device else 0
+    except (OSError, TypeError, AttributeError):
+        return None
+    return limit or None
 
 
 def thermal_state():
@@ -179,8 +196,8 @@ class _Exporter:
 
 
 class MacHost(_Exporter):
-    def __init__(self, read=_mac_read, thermal=thermal_state):
-        self.read, self.thermal = read, thermal
+    def __init__(self, read=_mac_read, thermal=thermal_state, gpu_limit=gpu_memory_limit):
+        self.read, self.thermal, self.gpu_limit = read, thermal, gpu_limit
 
     def values(self) -> dict:
         v = {f"vitals_host_{k}": n for k, n in parse_vm_stat(self.read("vm_stat")).items()}
@@ -193,6 +210,8 @@ class MacHost(_Exporter):
         state = self.thermal()
         if state is not None:
             v["vitals_host_thermal_state"] = state
+        if limit := self.gpu_limit():
+            v["vitals_host_gpu_memory_limit_bytes"] = limit
         return {**v, **(mac_battery(self.read("ioreg")) or {})}  # every read: plugging in shows at once
 
 

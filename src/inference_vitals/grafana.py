@@ -162,6 +162,7 @@ def _memory_panels(platform: str, m: str) -> list:
                 [
                     ("vitals_gpu_memory_used_bytes", "used, GPU {{gpu}}"),
                     ("vitals_gpu_memory_total_bytes", "total, GPU {{gpu}}"),
+                    ("vitals_training_peak_memory_bytes", "trainer peak {{run_name}}"),  # a fine-tune's
                 ],
                 "bytes",
                 0,
@@ -185,7 +186,15 @@ def _memory_panels(platform: str, m: str) -> list:
                 ("vitals_peak_memory_bytes", f"peak {m}"),
                 ("vitals_cache_memory_bytes", f"kept for reuse {m}"),
                 ("vitals_kv_cache_estimate_bytes", f"KV cache (estimate) {m}"),
-                ("max(vitals_gpu_memory_limit_bytes)", "GPU limit"),  # the Mac's, not a model's
+                (
+                    "vitals_training_peak_memory_bytes",
+                    "trainer peak {{run_name}}",
+                ),  # a fine-tune's, against the same limit
+                # the Mac's limit, not a model's: as a model run reports it, or else the machine's own (from Metal)
+                (
+                    "max(vitals_gpu_memory_limit_bytes) or max(vitals_host_gpu_memory_limit_bytes)",
+                    "GPU limit",
+                ),
             ],
             "decbytes",
             0,

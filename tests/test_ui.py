@@ -372,10 +372,11 @@ def test_the_page_server_takes_a_first_load_burst_without_dropping_connections()
 @pytest.mark.parametrize("platform", queries.PLATFORMS)
 def test_a_fine_tune_s_default_favourites_all_have_something_to_show(platform):
     fav = ui.spec(platform)["favourites"]["training"]
-    machine = (
-        "Mac memory and swap in use" if platform == queries.MAC else "GPU memory (VRAM), used against total"
+    memory = (
+        "MLX GPU memory, against the GPU limit"
+        if platform == queries.MAC
+        else "GPU memory (VRAM), used against total"
     )
-    assert fav == ["Training and validation loss, against GPU temperature", "Tokens trained per second", machine,
+    assert fav == ["Training and validation loss, against GPU temperature", "Tokens trained per second", memory,
                    "Swap activity (in and out)"]  # fmt: skip
-    # no model-run chart: during a fine-tune it would be an empty panel on a stranger's first look
-    assert not {"MLX GPU memory, against the GPU limit", "Writing speed against GPU temperature"} & set(fav)
+    assert "Writing speed against GPU temperature" not in fav  # a model run's: half empty during a fine-tune

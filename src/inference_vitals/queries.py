@@ -110,6 +110,7 @@ CONTEXT = "(vitals_current_context_tokens or vitals_last_context_used_tokens) / 
 LIMITS = (
     "macmon_memory_ram_total_bytes",
     "vitals_gpu_memory_limit_bytes",
+    "vitals_host_gpu_memory_limit_bytes",
     "vitals_gpu_memory_total_bytes",
     "vitals_gpu_power_limit_watts",
     "vitals_context_limit_tokens",

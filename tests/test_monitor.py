@@ -554,3 +554,18 @@ def test_status_tells_another_program_on_the_port_from_our_own(tmp_path, monkeyp
     capsys.readouterr()
     monitor.status(tmp_path)
     assert "port in use by another program" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
+def test_the_gpu_memory_chart_shows_a_fine_tune_s_peak_against_the_machine_s_limit(platform):
+    title = (
+        "MLX GPU memory, against the GPU limit"
+        if platform == queries.MAC
+        else "GPU memory (VRAM), used against total"
+    )
+    chart = next(p for p in _all_panels(grafana.dashboard(platform)) if p["title"] == title)
+    exprs = [t["expr"] for t in chart["targets"]]
+    assert "vitals_training_peak_memory_bytes" in exprs  # a fine-tune's own MLX (or other) memory
+    if platform == queries.MAC:  # the limit, even with no model run reporting it: the machine's, from Metal
+        assert "max(vitals_gpu_memory_limit_bytes) or max(vitals_host_gpu_memory_limit_bytes)" in exprs
+    assert "vitals_host_gpu_memory_limit_bytes" in queries.LIMITS

@@ -221,3 +221,19 @@ def test_the_thermal_state_reader_loads_macos_libraries_once():
     sysstat.thermal_state()
     sysstat.thermal_state()
     assert sysstat._objc.cache_info().misses == 1
+
+
+def test_a_mac_publishes_its_gpu_memory_limit():
+    host = sysstat.MacHost(read=_mac(0).read, thermal=lambda: 0, gpu_limit=lambda: 40200896512)
+    assert "vitals_host_gpu_memory_limit_bytes 40200896512" in host.render()
+    none = sysstat.MacHost(read=_mac(0).read, thermal=lambda: 0, gpu_limit=lambda: None)
+    assert "gpu_memory_limit" not in none.render()  # unreadable: left out, not a zero
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads macOS itself")
+def test_the_gpu_memory_limit_is_read_from_metal_as_mlx_reads_it():
+    limit = sysstat.gpu_memory_limit()
+    assert limit and 1e9 < limit < 1e12
+    assert (
+        sysstat.gpu_memory_limit.cache_info().misses == 1 or sysstat.gpu_memory_limit() == limit
+    )  # read once

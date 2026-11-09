@@ -243,11 +243,15 @@ def _favourites(platform: str, views: list) -> dict:
     memory and swap; for a fine-tune, its loss and speed, the machine's memory and swap."""
     by_key = {v["key"]: v["charts"] for v in views}
     swap = "Swap activity (in and out)"
-    # a fine-tune's: its own charts and the machine's memory (a model run's charts would stand empty)
-    machine = "Mac memory and swap in use" if platform == MAC else "GPU memory (VRAM), used against total"
+    # a fine-tune's: its loss and speed, and its peak memory against the GPU limit (on the memory chart)
+    memory = (
+        "MLX GPU memory, against the GPU limit"
+        if platform == MAC
+        else "GPU memory (VRAM), used against total"
+    )
     return {
         "inference": [by_key["speed"][0], by_key["memory"][0], swap],
-        "training": [*by_key["training"][:2], machine, swap],
+        "training": [*by_key["training"][:2], memory, swap],
     }
 
 
