@@ -206,21 +206,14 @@ def test_a_negative_current_printed_as_an_unsigned_number_is_read_as_negative():
     assert b["vitals_battery_draw_watts"] == 24.8
 
 
-def test_a_mac_read_starts_two_processes_and_the_battery_is_read_every_30_seconds():
+def test_a_mac_read_is_three_quick_processes_and_the_battery_is_fresh_every_time():
+    # plugging in should show within a scrape: ioreg takes ~15 ms, so it is read every time
     reads = []
-    now = iter([0, 10, 40])
     base = _mac(0).read
-    host = sysstat.MacHost(
-        read=lambda cmd: reads.append(cmd) or base(cmd), thermal=lambda: 0, clock=lambda: next(now)
-    )
+    host = sysstat.MacHost(read=lambda cmd: reads.append(cmd) or base(cmd), thermal=lambda: 0)
     host.render()
-    assert reads == ["vm_stat", "sysctl", "ioreg"]
-    reads.clear()
-    host.render()  # 10 s later: the battery's last reading is still fresh
-    assert reads == ["vm_stat", "sysctl"]
-    reads.clear()
-    host.render()  # 40 s: read it again
-    assert reads == ["vm_stat", "sysctl", "ioreg"]
+    host.render()
+    assert reads == ["vm_stat", "sysctl", "ioreg"] * 2
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="reads macOS itself")

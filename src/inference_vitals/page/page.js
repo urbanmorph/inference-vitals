@@ -279,7 +279,8 @@ function batteryText(b, left) {  // a laptop's battery: on power its charge; on 
 }
 async function renderBattery() {
   const q = SPEC.battery;
-  const [percent, wh, onPower, draw] = await Promise.all([one(q.percent_query), one(q.wh_query), one(q.on_power_query), one(q.draw_query)]);
+  const percent = await one(q.percent_query);  // no battery (a desktop): one query, and nothing more
+  const [wh, onPower, draw] = percent == null ? [] : await Promise.all([one(q.wh_query), one(q.on_power_query), one(q.draw_query)]);
   const b = batteryText({ percent, wh, onPower, draw }, state.left), el = $("battery");
   el.hidden = b.hidden;
   el.textContent = b.text;
@@ -558,8 +559,8 @@ async function refresh(all = false) {
   const now = Date.now(), was = state.mode;
   await decideMode();
   if (state.mode !== was) { all = true; if (view === "favourites") buildView(); }  // its favourites change with it
-  const jobs = [renderRunning(), trainingWindow()];
-  if (all || now - last.energy >= ENERGY_EVERY) { last.energy = now; jobs.push(renderEnergy(), renderBattery()); }  // both change slowly
+  const jobs = [renderRunning(), trainingWindow(), renderBattery()];  // plugging in shows within seconds
+  if (all || now - last.energy >= ENERGY_EVERY) { last.energy = now; jobs.push(renderEnergy()); }
   await Promise.all(jobs);
   await renderTiles();  // after energy, which Energy/token uses
   if (all || now - last.charts >= CHARTS_EVERY) { last.charts = now; await renderCharts(); }

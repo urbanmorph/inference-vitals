@@ -28,7 +28,6 @@ import pathlib
 import re
 import subprocess
 import sys
-import time
 
 METRICS = [  # on every platform
     "vitals_host_swapped_in_bytes_total",
@@ -163,7 +162,6 @@ MAC_COMMANDS = {
     "sysctl": ["sysctl", "-n", "kern.memorystatus_level", "vm.swapusage"],  # both in one call, one per line
     "ioreg": ["ioreg", "-rn", "AppleSmartBattery"],
 }
-BATTERY_EVERY = 30  # seconds: a battery changes slowly, and ioreg is the slowest of the three
 
 
 def _mac_read(name: str) -> str:
@@ -181,15 +179,8 @@ class _Exporter:
 
 
 class MacHost(_Exporter):
-    def __init__(self, read=_mac_read, thermal=thermal_state, clock=time.monotonic):
-        self.read, self.thermal, self.clock = read, thermal, clock
-        self.battery, self.battery_at = None, None
-
-    def _battery(self) -> dict:
-        now = self.clock()
-        if self.battery_at is None or now - self.battery_at >= BATTERY_EVERY:
-            self.battery, self.battery_at = mac_battery(self.read("ioreg")) or {}, now
-        return self.battery
+    def __init__(self, read=_mac_read, thermal=thermal_state):
+        self.read, self.thermal = read, thermal
 
     def values(self) -> dict:
         v = {f"vitals_host_{k}": n for k, n in parse_vm_stat(self.read("vm_stat")).items()}
@@ -202,7 +193,7 @@ class MacHost(_Exporter):
         state = self.thermal()
         if state is not None:
             v["vitals_host_thermal_state"] = state
-        return {**v, **self._battery()}
+        return {**v, **(mac_battery(self.read("ioreg")) or {})}  # every read: plugging in shows at once
 
 
 def _fields(text: str) -> dict:
