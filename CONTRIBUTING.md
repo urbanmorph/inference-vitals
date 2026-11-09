@@ -31,6 +31,16 @@ Capture a few lines of its real output (a step, a validation pass, a save; numbe
 them. Then add a row to the trainers table in [docs/training.md](docs/training.md), saying what it was
 tested against. The test keeps the reader honest if the trainer changes its format.
 
+## Releasing
+
+1. Add the release's notes under `## <version>` at the top of [CHANGELOG.md](CHANGELOG.md), in plain
+   words for the people who use it; they become the GitHub release's notes.
+2. `uv version <version>`, retake the screenshots if the page changed (`sh docs/take-screenshots.sh`,
+   during a model run on made-up documents; `WHAT=training`, during a fine-tune), commit and push.
+3. When the tests pass on `main`, `git tag -a v<version> -m "inference-vitals <version>"` and push the
+   tag. `.github/workflows/release.yml` tests on macOS and Linux, checks the tag, the version and the
+   notes agree, publishes to PyPI (trusted publishing, no token) and makes the GitHub release.
+
 ## Where things are
 
 | Path | What |

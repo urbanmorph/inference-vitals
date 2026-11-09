@@ -380,3 +380,11 @@ def test_a_fine_tune_s_default_favourites_all_have_something_to_show(platform):
     assert fav == ["Training and validation loss, against GPU temperature", "Tokens trained per second", memory,
                    "Swap activity (in and out)"]  # fmt: skip
     assert "Writing speed against GPU temperature" not in fav  # a model run's: half empty during a fine-tune
+
+
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
+def test_favourites_fill_the_two_by_two_grid_in_both_modes(platform):
+    fav = ui.spec(platform)["favourites"]
+    machine = "Mac memory and swap in use" if platform == queries.MAC else "Memory available (percent)"
+    assert len(fav["inference"]) == 4 and fav["inference"][-1] == machine  # no empty quarter on a first look
+    assert len(fav["training"]) == 4

@@ -75,7 +75,8 @@ only numbers are collected, never prompts, answers or file names. More: [docs/li
 | [Metrics](docs/metrics.md) | Every metric name, for other tools that read Prometheus |
 | [Limits](docs/limits.md) | Privacy in full, overhead, what it cannot show |
 | [AGENTS.md](AGENTS.md) | For coding agents helping you: tasks, checks, symptoms, rules |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Tests, checks, adding a trainer, where things are |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Tests, checks, adding a trainer, releasing, where things are |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
 
 It is [Prometheus](https://prometheus.io) with a dashboard page of its own (or
 [Grafana](https://grafana.com)), [macmon](https://github.com/vladkens/macmon) for the chip on a Mac (on

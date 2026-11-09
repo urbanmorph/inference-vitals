@@ -13,8 +13,12 @@ uv tool install inference-vitals          # puts `inference-vitals` on the PATH
 inference-vitals start                     # starts four services, each only if not running
 ```
 
-Then the page is at `http://127.0.0.1:3000`. `inference-vitals status` must show every service
-answering; if one says NOT READY, its log path is printed: read it (a port in use is the usual cause).
+Then the page is at `http://127.0.0.1:3000`. `start` exits non-zero when anything did not start, and
+says why on that service's line. `inference-vitals status` must show every service `running answering`
+(on Linux without `nvidia-smi`, gpustat says `not used`, which is fine).
+
+To update: `uv tool upgrade inference-vitals`, then `inference-vitals start`; it restarts whatever an
+older version left running. `inference-vitals --version` (or the first line of `status`) gives the version.
 
 ## What the user wants → what to do
 
@@ -41,7 +45,9 @@ Only one of the proxy, the library, `train` and `watch-training` can report at a
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Band says "Nothing reporting" | Nothing on 8400 | Start the proxy, the library, or `train`; check `curl 127.0.0.1:8400/metrics` |
-| `NOT READY` from `start` | Port in use, often a `brew services` copy | `brew services stop prometheus` (or the named one), then `start` |
+| `<name>: port <n> is already in use by another program` from `start` | Another program holds the port: a `brew services` copy, or another copy of inference-vitals | `brew services stop prometheus` (or `macmon`), or `inference-vitals stop` in that copy; then `start` |
+| `<name>: did not start: …` or `NOT READY` | The service exited or never answered | The line includes its log's last line and the log path: read the log |
+| `status` says an older version is still running | Upgraded, not restarted | `inference-vitals start` |
 | Tiles empty with the proxy: Progress, Context used (and GPU mem left shows the whole machine) | A proxy cannot see these | Expected; the library reports them |
 | A fine-tune shows no numbers | Its trainer's output format is not known | Use `inference_vitals.training` in the loop, or add the format ([CONTRIBUTING.md](CONTRIBUTING.md)) |
 | `address already in use` on 8400 | Two reporters at once | Stop one |

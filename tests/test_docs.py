@@ -106,3 +106,20 @@ def test_users_install_from_pypi_and_never_need_a_clone():
     assert (
         "uv add inference-vitals" in (ROOT / "docs/connect.md").read_text()
     )  # the library, in one's project
+
+
+def test_every_release_has_notes_in_the_changelog_and_the_release_uses_them():
+    import importlib.util
+    import tomllib
+
+    spec = importlib.util.spec_from_file_location("release_notes", ROOT / "scripts/release_notes.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    notes = mod.notes((ROOT / "CHANGELOG.md").read_text(), version)
+    assert notes.strip() and not notes.lstrip().startswith(
+        "## "
+    )  # this version's section, without its heading
+    assert mod.notes("## 0.3.0\n\nnew\n\n## 0.2.0\n\nold\n", "0.2.0").strip() == "old"
+    flow = (ROOT / ".github/workflows/release.yml").read_text()
+    assert "scripts/release_notes.py" in flow and "--notes-file" in flow and "--generate-notes" not in flow

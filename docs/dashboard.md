@@ -10,8 +10,8 @@ then tabs that swap the charts below them, so the live numbers never scroll out 
 **Favourites · Speed · Context · Training · Memory · Hardware.** Each tab shows its charts two to a row,
 sized to the space under the tiles; a tab with more scrolls inside its own area. Every chart has a ☆ in
 its title: star it and it joins **Favourites**, the first tab; click the ★ to take it off. Until you star
-your own, Favourites shows writing speed against GPU temperature, the model's memory against the GPU limit
-and swap activity; during a fine-tune, its loss and tokens trained per second, its peak memory against the
+your own, Favourites shows writing speed against GPU temperature, the model's memory against the GPU limit,
+swap activity and the machine's memory; during a fine-tune, its loss and tokens trained per second, its peak memory against the
 GPU limit (on Linux, against VRAM) and swap activity instead. Your stars are kept in this browser; "reset to the defaults" brings the starting
 set back. Every chart has a crosshair: point at any moment for each line's reading.
 

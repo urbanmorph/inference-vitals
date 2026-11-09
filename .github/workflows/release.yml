@@ -33,6 +33,8 @@ jobs:
         run: |
           version=$(uv version --short)
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME is not v$version"; exit 1; }
+      - name: The changelog has notes for this version
+        run: python3 scripts/release_notes.py "$GITHUB_REF_NAME" > /dev/null
       - name: README links that work on PyPI
         run: python3 scripts/pypi_readme.py "$GITHUB_REF_NAME"
       - run: uv build
@@ -62,7 +64,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: A GitHub release, so people watching the repo hear about it
+      - uses: actions/checkout@v5
+      - name: A GitHub release with this version's notes from CHANGELOG.md, so people watching hear about it
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes --verify-tag
+        run: |
+          python3 scripts/release_notes.py "$GITHUB_REF_NAME" > notes.md
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md --verify-tag
