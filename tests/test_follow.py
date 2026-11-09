@@ -130,3 +130,14 @@ def test_a_progress_bar_with_no_loss_yet_still_moves_the_run():
     assert run.total_steps == 181 and run.now["step"] == 2
     assert "loss" not in run.now  # nothing invented
     assert run.updated is not None  # so the page switches to it at once, not ten steps in
+
+
+def test_the_step_time_is_the_trainer_s_own_not_the_gap_between_lines_arriving():
+    # lines can arrive in bursts (a parent process passing them on): the bar's s/it is the real pace
+    run = _fed(
+        "Training:   2%|▏         | 3/181 [04:21<4:11:17, 84.70s/it]\r"
+        "Training:   2%|▏         | 4/181 [05:46<4:10:58, 85.12s/it]\r"
+    )
+    assert run.now["step_seconds"] == 85.12
+    fast = _fed("Training:  50%|█████     | 2/4 [00:01<00:01,  1.87it/s]\r")
+    assert fast.now["step_seconds"] == round(1 / 1.87, 3)  # tqdm shows it/s when a step is under a second
