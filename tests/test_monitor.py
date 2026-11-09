@@ -569,3 +569,45 @@ def test_the_gpu_memory_chart_shows_a_fine_tune_s_peak_against_the_machine_s_lim
     if platform == queries.MAC:  # the limit, even with no model run reporting it: the machine's, from Metal
         assert "max(vitals_gpu_memory_limit_bytes) or max(vitals_host_gpu_memory_limit_bytes)" in exprs
     assert "vitals_host_gpu_memory_limit_bytes" in queries.LIMITS
+
+
+def test_start_finishes_its_work_even_when_its_output_is_cut_short(tmp_path, monkeypatch):
+    # `inference-vitals start | head -2`: the pipe closes after two lines; a failure to print must not
+    # leave the dashboard half-restarted (seen on Linux: Prometheus and the page left down)
+    old = _fake_services(monkeypatch, tmp_path)
+    (tmp_path / "version").write_text("0.1.0")
+
+    class Closed:
+        def write(self, text):
+            raise BrokenPipeError
+
+        def flush(self):
+            raise BrokenPipeError
+
+    monkeypatch.setattr("sys.stdout", Closed())
+    monitor.start(tmp_path)
+    assert old.poll() is not None and monitor._pid(tmp_path, "sysstat")  # restarted, all the way
+    assert (tmp_path / "version").read_text() == monitor.VERSION
+    monkeypatch.undo()
+    monitor.stop(tmp_path)
+
+
+def test_status_says_why_the_nvidia_exporter_is_not_running(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "detect_platform", lambda: queries.LINUX)
+    monkeypatch.setattr(monitor, "find_tools", lambda platform: {**TOOLS, "nvidia": None})
+    monkeypatch.setattr(monitor, "_ready", lambda url: False)
+    (tmp_path / "pids").mkdir()
+    monitor.status(tmp_path)
+    assert "gpustat     not used: no nvidia-smi" in capsys.readouterr().out
+
+
+def test_start_on_linux_without_an_nvidia_gpu_starts_the_rest(tmp_path, monkeypatch, capsys):
+    # the warning only Linux without nvidia-smi prints: once crashed start before anything ran
+    _fake_services(monkeypatch, tmp_path)
+    monitor.stop(tmp_path)
+    monkeypatch.setattr(monitor, "detect_platform", lambda: queries.LINUX)
+    monkeypatch.setattr(monitor, "find_tools", lambda platform: {**TOOLS, "nvidia": None})
+    monitor.start(tmp_path)
+    out = capsys.readouterr().out
+    assert "nvidia-smi not found" in out and "sysstat: started" in out
+    monitor.stop(tmp_path)

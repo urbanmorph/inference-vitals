@@ -279,6 +279,15 @@ def dashboard_url(ui: str) -> str:
     return f"http://127.0.0.1:{DASHBOARD}/" + ("d/inference-vitals" if ui == GRAFANA_UI else "")
 
 
+def _say(text: str = ""):
+    """Print a line of start, stop or status. If the reader has gone (`start | head -2`), say nothing more
+    but keep working: a failure to print must never leave the dashboard half-started."""
+    try:
+        print(text, flush=True)
+    except BrokenPipeError:
+        sys.stdout = open(os.devnull, "w")  # noqa: SIM115 - for the rest of this process
+
+
 def running_version(state: pathlib.Path):
     """The version that started the services now running: None if nothing runs, "an older version" for
     services started before versions were recorded (0.2.0)."""
@@ -318,24 +327,21 @@ def start(state: pathlib.Path = STATE, ui: str = PAGE_UI):
     if conflict := ui_conflict(state, ui):
         sys.exit(conflict)
     if platform == LINUX and not tools["nvidia"]:
-        print(
-            "nvidia-smi not found: GPU numbers stay empty (the model and memory numbers still work)",
-            flush=True,
-        )
+        _say("nvidia-smi not found: GPU numbers stay empty (the model and memory numbers still work)")
     if (was := running_version(state)) not in (None, VERSION):
         # after `uv tool upgrade`: the services still run the old code and the old settings
         who = f"inference-vitals {was}" if was[0].isdigit() else "An older inference-vitals"
-        print(f"{who} is running; restarting as {VERSION}", flush=True)
+        _say(f"{who} is running; restarting as {VERSION}")
         stop(state)
     write_configs(state, platform)
     (state / "version").write_text(VERSION)
     failed, started = False, 0
     for name, cmd in commands(state, platform, tools, ui).items():
         if _pid(state, name):
-            print(f"{name}: already running", flush=True)
+            _say(f"{name}: already running")
             continue
         if _ready(READY[name]):  # ours is not running, yet something answers there
-            print(f"{name}: {_taken(name)}", flush=True)
+            _say(f"{name}: {_taken(name)}")
             failed = True
             continue
         log_path = state / "logs" / f"{name}.log"
@@ -355,13 +361,13 @@ def start(state: pathlib.Path = STATE, ui: str = PAGE_UI):
             time.sleep(0.5)
         if proc.poll() is not None:  # it exited: "started" only for a process of ours that is still there
             (state / "pids" / name).unlink()
-            print(f"{name}: did not start: {_last_line(log_path)} (log: {log_path})", flush=True)
+            _say(f"{name}: did not start: {_last_line(log_path)} (log: {log_path})")
             failed = True
         elif not _ready(READY[name]):
-            print(f"{name}: NOT READY, see {log_path}", flush=True)
+            _say(f"{name}: NOT READY, see {log_path}")
             failed = True
         else:
-            print(f"{name}: started", flush=True)
+            _say(f"{name}: started")
             started += 1
     if failed:
         rest = (
@@ -370,7 +376,7 @@ def start(state: pathlib.Path = STATE, ui: str = PAGE_UI):
             else "Nothing was started."
         )
         sys.exit(f"\nNot everything could start; see above. {rest}")
-    print(
+    _say(
         f"\nDashboard: {dashboard_url(ui)}  (view-only; change it in {'grafana.py' if ui == GRAFANA_UI else 'ui.py'})"
     )
 
@@ -403,19 +409,23 @@ def stop(state: pathlib.Path = STATE):
                 if _gone(pid):
                     break
                 time.sleep(0.1)
-        print(f"{name}: {'stopped' if pid else 'was not running'}")
+        _say(f"{name}: {'stopped' if pid else 'was not running'}")
 
 
 def status(state: pathlib.Path = STATE):
-    print(f"inference-vitals {VERSION}")
+    _say(f"inference-vitals {VERSION}")
     if (was := running_version(state)) not in (None, VERSION):
-        print(f"{was} is still running: run `inference-vitals start` to switch")
-    for name in _names(detect_platform()):
+        _say(f"{was} is still running: run `inference-vitals start` to switch")
+    platform = detect_platform()
+    no_gpu = platform == LINUX and not find_tools(platform)["nvidia"]
+    for name in _names(platform):
         ours, answers = _pid(state, name), _ready(READY[name])
-        if not ours and answers:
-            print(f"{name:11} stopped  port in use by another program ({_port(name)})")
+        if name == "gpustat" and no_gpu and not ours:
+            _say(f"{name:11} not used: no nvidia-smi, so no GPU numbers")
+        elif not ours and answers:
+            _say(f"{name:11} stopped  port in use by another program ({_port(name)})")
         else:
-            print(f"{name:11} {'running' if ours else 'stopped':8} {'answering' if answers else '-'}")
+            _say(f"{name:11} {'running' if ours else 'stopped':8} {'answering' if answers else '-'}")
 
 
 def main():
