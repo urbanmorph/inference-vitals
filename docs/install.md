@@ -40,7 +40,8 @@ tiles at the top stay those of a model run.
 | --- | --- |
 | `inference-vitals start` | Start the exporters, Prometheus and the page (each only if not running) |
 | `inference-vitals start --ui grafana` | The same, with Grafana in place of the page |
-| `inference-vitals status` | What is running, and whether each one answers |
+| `inference-vitals status` | The version, what is running, and whether each one answers |
+| `inference-vitals --version` | The installed version |
 | `inference-vitals stop` | Stop everything `start` started |
 | `inference-vitals proxy --to URL` | Measure an engine's requests on their way through (port 8401); see [connect.md](connect.md) |
 | `inference-vitals train -- COMMAND` | Run a fine-tune and follow it from what it prints; see [training.md](training.md) |
@@ -74,9 +75,11 @@ works. The proxy works the same on Linux. Windows is not supported (under WSL2, 
 ## Troubleshooting
 
 - **`prometheus: not found (brew install prometheus)`** (or macmon, or grafana): install what it names.
-- **`<name>: NOT READY, see ~/.local/state/inference-vitals/logs/<name>.log`**: the log says why. The
-  usual cause is a port already taken, often by a copy started with `brew services`; stop that one
-  (`brew services stop prometheus`) and run `start` again.
+- **`<name>: port <n> is already in use by another program`**: something else holds that port, usually
+  a copy started with `brew services` (`brew services stop prometheus`, or `macmon`) or another copy of
+  inference-vitals. Stop it and run `start` again; nothing of ours was started on that port.
+- **`<name>: did not start: <the last line of its log>`** or **`NOT READY`**: the log named beside it says
+  why.
 - **`grafana is running on port 3000: run inference-vitals stop first`** (or `page is running…`): the
   other dashboard holds the port. `stop`, then `start` with the one you want.
 - **The run's tiles stay empty and the band says "Nothing reporting"**: nothing is reporting to
@@ -88,14 +91,13 @@ works. The proxy works the same on Linux. Windows is not supported (under WSL2, 
 - **Some machine tiles stay empty on Linux**: GPU numbers need `nvidia-smi`; CPU temperature needs a
   `coretemp` or `k10temp` sensor, which virtual machines usually lack.
 - **No battery chip on a laptop**: the system exporter reads no battery. On a Mac, check
-  `ioreg -rn AppleSmartBattery` lists one; on Linux, `/sys/class/power_supply/BAT0`. Run `stop` and
-  `start` after updating inference-vitals, so the exporter runs the new code.
+  `ioreg -rn AppleSmartBattery` lists one; on Linux, `/sys/class/power_supply/BAT0`.
 
 ## Update
 
 ```sh
 uv tool upgrade inference-vitals
-inference-vitals stop && inference-vitals start   # so the running services use the new version
+inference-vitals start   # restarts anything an older version left running
 ```
 
 Each release is listed, with what changed, on the

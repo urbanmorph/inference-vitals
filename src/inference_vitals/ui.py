@@ -268,6 +268,7 @@ def spec(platform: str) -> dict:
     return {
         "platform": platform,
         "repo": REPO,
+        "version": monitor.VERSION,
         "ranges": RANGES,
         "running": {
             "phase_query": "vitals_current_phase",

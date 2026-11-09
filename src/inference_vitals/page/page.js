@@ -570,6 +570,7 @@ async function main() {
   $("repo").href = SPEC.repo;
   $("repo-link").href = SPEC.repo;
   $("repo-link").textContent = SPEC.repo.replace(/^https:\/\//, "");
+  $("version").textContent = `v${SPEC.version}`;
   view = viewFrom(asked, SPEC.views.map((v) => v.key));
   theme(); ranges(); rateBox(); tabs(); buildView();
   await refresh(true);

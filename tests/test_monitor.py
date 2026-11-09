@@ -438,3 +438,119 @@ def test_the_modules_depend_one_way_queries_then_grafana_then_the_commands():
     assert imports("queries") == set()  # the vocabulary stands alone
     assert imports("grafana") == {"queries"}
     assert "ui" not in imports("monitor") and "monitor" not in imports("grafana")
+
+
+def _fake_services(monkeypatch, tmp_path):
+    """start() with one cheap service, a sleeping Python, instead of the real exporters and Prometheus."""
+    import subprocess
+    import sys
+    import threading
+
+    sleeper = [sys.executable, "-c", "import time; time.sleep(60)"]
+    monkeypatch.setattr(monitor, "detect_platform", lambda: queries.MAC)
+    monkeypatch.setattr(monitor, "find_tools", lambda platform: TOOLS)
+    monkeypatch.setattr(monitor, "write_configs", lambda state, platform: None)
+    monkeypatch.setattr(monitor, "commands", lambda *a, **k: {"sysstat": sleeper})
+    # a port answers while one of our services is alive (only sysstat runs here)
+    monkeypatch.setattr(monitor, "_ready", lambda url: monitor._pid(tmp_path, "sysstat") is not None)
+    for d in ("pids", "logs"):
+        (tmp_path / d).mkdir(exist_ok=True)
+    old = subprocess.Popen(sleeper)
+    threading.Thread(target=old.wait, daemon=True).start()  # reap it once stopped, as launchd would
+    (tmp_path / "pids" / "sysstat").write_text(str(old.pid))
+    return old
+
+
+def test_the_version_is_the_installed_package_s():
+    import importlib.metadata
+
+    assert monitor.VERSION == importlib.metadata.version("inference-vitals")
+
+
+def test_start_after_an_upgrade_restarts_what_an_older_version_left_running(tmp_path, monkeypatch, capsys):
+    old = _fake_services(monkeypatch, tmp_path)
+    (tmp_path / "version").write_text("0.1.0")
+    monitor.start(tmp_path)
+    new = int((tmp_path / "pids" / "sysstat").read_text())
+    assert new != old.pid and old.poll() is not None  # the old one is gone, a new one runs the new code
+    assert (tmp_path / "version").read_text() == monitor.VERSION
+    assert f"0.1.0 is running; restarting as {monitor.VERSION}" in capsys.readouterr().out
+    monitor.stop(tmp_path)
+
+
+def test_services_from_before_versions_were_recorded_count_as_older(tmp_path, monkeypatch, capsys):
+    old = _fake_services(monkeypatch, tmp_path)  # 0.2.0 wrote no version file
+    monitor.start(tmp_path)
+    assert old.poll() is not None and "restarting as" in capsys.readouterr().out
+    monitor.stop(tmp_path)
+
+
+def test_start_with_the_same_version_leaves_running_services_alone(tmp_path, monkeypatch, capsys):
+    old = _fake_services(monkeypatch, tmp_path)
+    (tmp_path / "version").write_text(monitor.VERSION)
+    monitor.start(tmp_path)
+    assert int((tmp_path / "pids" / "sysstat").read_text()) == old.pid
+    assert "sysstat: already running" in capsys.readouterr().out
+    monitor.stop(tmp_path)
+
+
+def test_status_says_the_version_and_when_an_older_one_is_still_running(tmp_path, monkeypatch, capsys):
+    _fake_services(monkeypatch, tmp_path)
+    (tmp_path / "version").write_text("0.1.0")
+    monitor.status(tmp_path)
+    out = capsys.readouterr().out
+    assert f"inference-vitals {monitor.VERSION}" in out
+    assert "0.1.0 is still running: run `inference-vitals start` to switch" in out
+    monitor.stop(tmp_path)
+
+
+def test_the_page_shows_its_version():
+    from inference_vitals import ui
+
+    assert ui.spec(queries.MAC)["version"] == monitor.VERSION
+
+
+def test_start_does_not_claim_a_port_another_program_already_holds(tmp_path, monkeypatch, capsys):
+    _fake_services(monkeypatch, tmp_path)
+    monitor.stop(tmp_path)
+    monkeypatch.setattr(monitor, "_ready", lambda url: True)  # nothing of ours runs, yet the port answers
+    launched = []
+    monkeypatch.setattr(monitor.subprocess, "Popen", lambda *a, **k: launched.append(a))
+    with pytest.raises(SystemExit) as stopped:
+        monitor.start(tmp_path)
+    out = capsys.readouterr().out
+    assert not launched  # it would only fail to bind, or worse, sit there doing nothing
+    assert "sysstat: port 9092 is already in use by another program" in out
+    assert "started" not in out and "Dashboard:" not in out
+    assert stopped.value.code  # a script or an agent can tell it failed
+
+
+def test_start_reports_a_service_that_exits_at_once_instead_of_calling_it_started(
+    tmp_path, monkeypatch, capsys
+):
+    import sys
+
+    _fake_services(monkeypatch, tmp_path)
+    monitor.stop(tmp_path)
+    monkeypatch.setattr(monitor, "_ready", lambda url: False)  # it never comes up
+    monkeypatch.setattr(
+        monitor,
+        "commands",
+        lambda *a, **k: {
+            "sysstat": [sys.executable, "-c", "print('bind: address already in use'); raise SystemExit(1)"]
+        },
+    )
+    with pytest.raises(SystemExit):
+        monitor.start(tmp_path)
+    out = capsys.readouterr().out
+    assert "sysstat: did not start" in out and "address already in use" in out  # the log's last line
+    assert "sysstat: started" not in out
+
+
+def test_status_tells_another_program_on_the_port_from_our_own(tmp_path, monkeypatch, capsys):
+    _fake_services(monkeypatch, tmp_path)
+    monitor.stop(tmp_path)
+    monkeypatch.setattr(monitor, "_ready", lambda url: True)
+    capsys.readouterr()
+    monitor.status(tmp_path)
+    assert "port in use by another program" in capsys.readouterr().out

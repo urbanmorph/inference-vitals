@@ -22,8 +22,10 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
+from inference_vitals import __version__ as VERSION
 from inference_vitals.grafana import DATASOURCE_UID, dashboard
 from inference_vitals.metrics import DEFAULT_PORT
 from inference_vitals.queries import LINUX, MAC, rules_config
@@ -277,6 +279,37 @@ def dashboard_url(ui: str) -> str:
     return f"http://127.0.0.1:{DASHBOARD}/" + ("d/inference-vitals" if ui == GRAFANA_UI else "")
 
 
+def running_version(state: pathlib.Path):
+    """The version that started the services now running: None if nothing runs, "an older version" for
+    services started before versions were recorded (0.2.0)."""
+    if not any(_pid(state, name) for name in _names(detect_platform())):
+        return None
+    f = state / "version"
+    return f.read_text().strip() if f.exists() else "an older version"
+
+
+def _port(name: str) -> int:
+    return urllib.parse.urlsplit(READY[name]).port
+
+
+def _taken(name: str) -> str:
+    """What to say when another program already answers on a service's port."""
+    usual = {
+        "prometheus": "Often Prometheus run by Homebrew: `brew services stop prometheus`",
+        "macmon": "Often macmon run by Homebrew: `brew services stop macmon`",
+    }.get(name, "Perhaps another copy of inference-vitals: `inference-vitals stop` there")
+    return f"port {_port(name)} is already in use by another program. {usual}, then start again."
+
+
+def _last_line(path: pathlib.Path) -> str:
+    lines = (
+        [ln.strip() for ln in path.read_text(errors="replace").splitlines() if ln.strip()]
+        if path.exists()
+        else []
+    )
+    return lines[-1][:200] if lines else "no output"
+
+
 def start(state: pathlib.Path = STATE, ui: str = PAGE_UI):
     platform = detect_platform()
     tools = find_tools(platform)
@@ -289,12 +322,24 @@ def start(state: pathlib.Path = STATE, ui: str = PAGE_UI):
             "nvidia-smi not found: GPU numbers stay empty (the model and memory numbers still work)",
             flush=True,
         )
+    if (was := running_version(state)) not in (None, VERSION):
+        # after `uv tool upgrade`: the services still run the old code and the old settings
+        who = f"inference-vitals {was}" if was[0].isdigit() else "An older inference-vitals"
+        print(f"{who} is running; restarting as {VERSION}", flush=True)
+        stop(state)
     write_configs(state, platform)
+    (state / "version").write_text(VERSION)
+    failed, started = False, 0
     for name, cmd in commands(state, platform, tools, ui).items():
         if _pid(state, name):
             print(f"{name}: already running", flush=True)
             continue
-        log = open(state / "logs" / f"{name}.log", "a")  # noqa: SIM115 - handed to the child process
+        if _ready(READY[name]):  # ours is not running, yet something answers there
+            print(f"{name}: {_taken(name)}", flush=True)
+            failed = True
+            continue
+        log_path = state / "logs" / f"{name}.log"
+        log = open(log_path, "a")  # noqa: SIM115 - handed to the child process
         proc = subprocess.Popen(
             cmd,
             stdout=log,
@@ -305,13 +350,26 @@ def start(state: pathlib.Path = STATE, ui: str = PAGE_UI):
         )
         (state / "pids" / name).write_text(str(proc.pid))
         for _ in range(60):
-            if _ready(READY[name]):
+            if proc.poll() is not None or _ready(READY[name]):
                 break
             time.sleep(0.5)
-        print(
-            f"{name}: {'started' if _ready(READY[name]) else 'NOT READY, see ' + str(state / 'logs' / (name + '.log'))}",
-            flush=True,
+        if proc.poll() is not None:  # it exited: "started" only for a process of ours that is still there
+            (state / "pids" / name).unlink()
+            print(f"{name}: did not start: {_last_line(log_path)} (log: {log_path})", flush=True)
+            failed = True
+        elif not _ready(READY[name]):
+            print(f"{name}: NOT READY, see {log_path}", flush=True)
+            failed = True
+        else:
+            print(f"{name}: started", flush=True)
+            started += 1
+    if failed:
+        rest = (
+            "The others are running (`inference-vitals stop` stops them)."
+            if started
+            else "Nothing was started."
         )
+        sys.exit(f"\nNot everything could start; see above. {rest}")
     print(
         f"\nDashboard: {dashboard_url(ui)}  (view-only; change it in {'grafana.py' if ui == GRAFANA_UI else 'ui.py'})"
     )
@@ -322,24 +380,48 @@ def _names(platform: str) -> list[str]:
     return [chip, "sysstat", "prometheus", PAGE_UI, GRAFANA_UI]
 
 
+def _gone(pid: int) -> bool:
+    try:
+        if os.waitpid(pid, os.WNOHANG)[0] == pid:  # our own child (started by this process) has exited
+            return True
+    except ChildProcessError:  # not our child: launchd or init reaps it
+        pass
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    return False
+
+
 def stop(state: pathlib.Path = STATE):
     for name in reversed(_names(detect_platform())):
         pid = _pid(state, name)
         if pid:
             os.kill(pid, signal.SIGTERM)
             (state / "pids" / name).unlink()
+            for _ in range(100):  # until it has gone, so a start straight after finds its port free
+                if _gone(pid):
+                    break
+                time.sleep(0.1)
         print(f"{name}: {'stopped' if pid else 'was not running'}")
 
 
 def status(state: pathlib.Path = STATE):
+    print(f"inference-vitals {VERSION}")
+    if (was := running_version(state)) not in (None, VERSION):
+        print(f"{was} is still running: run `inference-vitals start` to switch")
     for name in _names(detect_platform()):
-        print(
-            f"{name:11} {'running' if _pid(state, name) else 'stopped':8} {'answering' if _ready(READY[name]) else '-'}"
-        )
+        ours, answers = _pid(state, name), _ready(READY[name])
+        if not ours and answers:
+            print(f"{name:11} stopped  port in use by another program ({_port(name)})")
+        else:
+            print(f"{name:11} {'running' if ours else 'stopped':8} {'answering' if answers else '-'}")
 
 
 def main():
     action = sys.argv[1] if len(sys.argv) > 1 else "status"
+    if action in ("--version", "version"):
+        return print(VERSION)
     if action == "proxy":
         from inference_vitals import proxy
 
