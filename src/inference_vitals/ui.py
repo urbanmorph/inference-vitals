@@ -239,11 +239,16 @@ def _views(platform: str) -> tuple[dict, list]:
 
 
 def _favourites(platform: str, views: list) -> dict:
-    """What Favourites shows until someone stars their own: the speed chart, the model's memory, swap; and
-    in a fine-tune, its loss chart first."""
+    """What Favourites shows until someone stars their own: for a model run, the speed chart, the model's
+    memory and swap; for a fine-tune, its loss and speed, the machine's memory and swap."""
     by_key = {v["key"]: v["charts"] for v in views}
-    common = [by_key["speed"][0], by_key["memory"][0], "Swap activity (in and out)"]
-    return {"inference": common, "training": [by_key["training"][0], *common]}
+    swap = "Swap activity (in and out)"
+    # a fine-tune's: its own charts and the machine's memory (a model run's charts would stand empty)
+    machine = "Mac memory and swap in use" if platform == MAC else "GPU memory (VRAM), used against total"
+    return {
+        "inference": [by_key["speed"][0], by_key["memory"][0], swap],
+        "training": [*by_key["training"][:2], machine, swap],
+    }
 
 
 def _target(t: dict) -> dict:
