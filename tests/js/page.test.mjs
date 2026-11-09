@@ -75,6 +75,17 @@ test("the page shows whichever reported last, a fine-tune or a model run", () =>
   assert.equal(modeOf(null, null), "inference");  // nothing yet: today's page
 });
 
+test("an ended fine-tune keeps the page only for a while: a day if it finished, an hour if it stopped", () => {
+  const { modeOf } = page;
+  const H = 3600, ended = 100000;
+  assert.equal(modeOf(ended, null, "training", ended + 5 * H), "training");  // still training: always
+  assert.equal(modeOf(ended, null, "finished", ended + 23 * H), "training");  // last night's run, this morning
+  assert.equal(modeOf(ended, null, "finished", ended + 25 * H), "inference");
+  assert.equal(modeOf(ended, null, "stale", ended + 50 * 60), "training");  // you can see it died
+  assert.equal(modeOf(ended, null, "stale", ended + 2 * H), "inference");  // a killed run does not hold the page
+  assert.equal(modeOf(ended, ended + 10, "training", ended + 20), "inference");  // a model run reported since
+});
+
 test("the battery chip shows on any laptop: on power its charge, on battery the time left at this load", () => {
   const { batteryText } = page;
   assert.equal(batteryText({ percent: 64, wh: 49.6, draw: 24.8, onPower: 0 }, null).text, "🔋 64% · ~2 h 0 min at this load");

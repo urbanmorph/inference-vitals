@@ -249,13 +249,20 @@ function perToken(e, mode) {
 
 // ---- which run the page is about, and the battery ----
 const state = { energy: null, mode: "inference", left: null, window: null };  // window: the latest fine-tune's span  // left: seconds the current run still needs
-function modeOf(trainingAt, runAt) {  // whichever reported last: a fine-tune, or a model run (the default)
-  return trainingAt !== null && (runAt === null || trainingAt > runAt) ? "training" : "inference";
+// How long a fine-tune that has ended keeps the page, after its last report: one that finished, a day (last
+// night's run is still there in the morning); one that stopped reporting (killed), an hour.
+const HOLD = { finished: 24 * 3600, stale: 3600 };
+function modeOf(trainingAt, runAt, how = "training", now = Date.now() / 1000) {
+  // whichever reported last: a fine-tune, or a model run (the default); an ended fine-tune only for HOLD
+  if (trainingAt == null || (runAt != null && runAt >= trainingAt)) return "inference";
+  return how in HOLD && now - trainingAt > HOLD[how] ? "inference" : "training";
 }
 async function decideMode() {
-  const m = SPEC.mode;  // a week of readings: asked at the charts' pace, not every few seconds
-  const [t, r] = await slow("mode", () => Promise.all([one(m.training_query), one(m.run_query)]));
-  state.mode = modeOf(t, r);
+  const m = SPEC.mode, band = SPEC.training.band;  // a week of readings: asked at the charts' pace
+  const [t, r, phase, alive] = await slow("mode", () =>
+    Promise.all([one(m.training_query), one(m.run_query), one(band.phase_query), one(band.alive_query)]));
+  const now = Date.now() / 1000;
+  state.mode = modeOf(t, r, runState(phase, alive, now), now);
   $("band-label").textContent = state.mode === "training" ? "Training" : "Running";
 }
 function batteryText(b, left) {  // a laptop's battery: on power its charge; on battery the time left at its draw now

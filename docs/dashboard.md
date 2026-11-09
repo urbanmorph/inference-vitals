@@ -65,10 +65,11 @@ energy per *trained* token.
 **Memorising** when it rises while training loss still falls: the model is learning its examples by heart
 rather than learning from them. The Training tab's charts (and any you have starred) span the latest run
 from its start to its end, or to now while it runs, whatever range is chosen, so a one-minute run fills
-them as a two-hour one does. A finished fine-tune
-stays on the page, marked finished, with its last numbers, until a model run reports (or for a week). A
-fine-tune that stopped without finishing (killed, or a watched log that stopped growing) is marked
-"stopped reporting" instead of looking as if it were still training.
+them as a two-hour one does. A finished fine-tune stays on the page, marked finished, with its last
+numbers, for a day after it ends (so last night's run is still there in the morning), unless a model run
+reports first. A fine-tune that stopped without finishing (killed, or a watched log that stopped growing)
+is marked "stopped reporting" instead of looking as if it were still training, and gives the page back
+after an hour. Its charts stay in the Training tab either way.
 How to get a fine-tune on the page: [training.md](training.md).
 
 ![Training mode, after a short LoRA fine-tune on made-up images](screenshots/training-dark.png)
