@@ -36,6 +36,7 @@ def _mac(thermal):
             "ioreg": "",  # no battery
         }[cmd],
         thermal=lambda: thermal,
+        gpu_limit=lambda: 40200896512,  # not Metal's: the tests run on Linux too
     )
 
 
@@ -162,7 +163,9 @@ def test_a_macs_battery_gives_its_charge_the_energy_left_and_whether_it_is_on_po
 
 def test_the_battery_is_in_the_macs_numbers_only_when_there_is_one():
     with_battery = sysstat.MacHost(
-        read=lambda cmd: {"ioreg": IOREG}.get(cmd) or _mac(0).read(cmd), thermal=lambda: 0
+        read=lambda cmd: {"ioreg": IOREG}.get(cmd) or _mac(0).read(cmd),
+        thermal=lambda: 0,
+        gpu_limit=lambda: None,
     )
     assert "vitals_battery_remaining_wh 49.6" in with_battery.render()
     assert "vitals_battery" not in _mac(0).render()
@@ -210,7 +213,9 @@ def test_a_mac_read_is_three_quick_processes_and_the_battery_is_fresh_every_time
     # plugging in should show within a scrape: ioreg takes ~15 ms, so it is read every time
     reads = []
     base = _mac(0).read
-    host = sysstat.MacHost(read=lambda cmd: reads.append(cmd) or base(cmd), thermal=lambda: 0)
+    host = sysstat.MacHost(
+        read=lambda cmd: reads.append(cmd) or base(cmd), thermal=lambda: 0, gpu_limit=lambda: None
+    )
     host.render()
     host.render()
     assert reads == ["vm_stat", "sysctl", "ioreg"] * 2
