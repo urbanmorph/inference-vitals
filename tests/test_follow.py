@@ -118,3 +118,15 @@ def test_a_run_is_named_after_the_module_it_runs_not_after_python():
     assert follow.default_name(["python", "-m", "mlx_vlm.train", "--model", "x"]) == "mlx_vlm.train"
     assert follow.default_name(["/usr/bin/python3", "train.py"]) == "train.py"
     assert follow.default_name(["./my-trainer", "--epochs", "2"]) == "my-trainer"
+
+
+def test_a_progress_bar_with_no_loss_yet_still_moves_the_run():
+    # mlx-vlm on an 8B: steps are slow and the bar shows no loss until the first report (every 10 steps)
+    run = _fed(
+        "Training:   0%|          | 0/181 [00:00<?, ?it/s]\r"
+        "Training:   1%|          | 1/181 [01:42<5:08:55, 102.98s/it]\r"
+        "Training:   1%|          | 2/181 [03:02<4:26:04, 89.19s/it] \r"
+    )
+    assert run.total_steps == 181 and run.now["step"] == 2
+    assert "loss" not in run.now  # nothing invented
+    assert run.updated is not None  # so the page switches to it at once, not ten steps in

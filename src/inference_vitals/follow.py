@@ -25,7 +25,8 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 TOTAL = re.compile(r"Starting training\.\.\., (?:iterations|iters): (\d+)")
 HEADER = re.compile(r"^(Training|Validation) \(iteration (\d+)\):")
 PAIR = re.compile(r"\b([a-z_]+)=(-?[\d,]*\.?\d+(?:e[-+]?\d+)?)")
-BAR = re.compile(r"\|\s*(\d+)/(\d+) \[[^\]]*?loss=([\d.]+)(?:, lr=([\d.e+-]+))?")
+# a tqdm progress bar: "| 12/181 [..., loss=0.41, lr=1.00e-04]"; the loss and rate only once reported
+BAR = re.compile(r"\|\s*(\d+)/(\d+) \[[^\]]*?(?:loss=([\d.]+)(?:, lr=([\d.e+-]+))?)?\]?\s*$")
 SAVED = re.compile(r"Saved (?:final )?(?:adapter|trainable) weights")  # mlx-lm; mlx-vlm 0.7
 LM_TRAIN = re.compile(
     r"Iter (\d+): Train loss ([\d.]+), Learning Rate ([\d.e+-]+).*?Tokens/sec ([\d.]+)"
@@ -74,7 +75,7 @@ class Reader:
         elif m := BAR.search(s):
             step, total, loss, lr = m.groups()
             run.total_steps = run.total_steps or int(total)
-            run.step(int(step), loss=float(loss), learning_rate=float(lr) if lr else None)
+            run.step(int(step), loss=float(loss) if loss else None, learning_rate=float(lr) if lr else None)
         elif self.block and (pairs := PAIR.findall(s)):
             nums = {k: float(v.replace(",", "")) for k, v in pairs}
             if self.block == "Validation":
