@@ -23,7 +23,7 @@ test("axis labels are compact so they fit the margin", () => {
 });
 
 test("axis tops round up to 1, 2, 2.5 or 5 times a power of ten", () => {
-  assert.deepEqual([100, 110, 24.6, 68.8, 6000, 0.5].map(page.niceMax), [100, 200, 25, 100, 10000, 0.5]);
+  assert.deepEqual([100, 110, 24.6, 68.8, 6000, 0.5, 51.5e9].map(page.niceMax), [100, 120, 25, 80, 6000, 0.5, 60e9]);
 });
 
 test("energy switches to kWh past a thousand Wh", () => {
@@ -207,4 +207,12 @@ test("every tile renderer shows its tile's name, even before any number has arri
     const html = await render(tile, null, null, "plain");
     assert.match(html, /A tile/, kind);
   }
+});
+
+test("a chart with a limit line ends its axis at the limit: the machine's own memory, not a round 100 GB", () => {
+  const { axisTop } = page;
+  assert.equal(axisTop([44e9, 7e9], [51.5e9]), 51.5e9);  // 48 GB Mac: the top is its 51.5 GB
+  assert.equal(axisTop([90e9], [137.4e9]), 137.4e9);  // a 128 GB Mac
+  assert.equal(axisTop([60e9], [51.5e9]), 60e9);  // a reading above the limit still fits
+  assert.equal(axisTop([44e9], []), 50e9);  // no limit line: the next round number
 });

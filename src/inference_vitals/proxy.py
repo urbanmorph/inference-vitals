@@ -23,7 +23,7 @@ import threading
 import time
 import urllib.parse
 
-from inference_vitals.metrics import DEFAULT_PORT, Metrics, run_until_interrupt
+from inference_vitals.metrics import DEFAULT_PORT, Metrics, Server, run_until_interrupt
 from inference_vitals.metrics import serve as serve_metrics
 
 PROXY_PORT = 8401
@@ -260,7 +260,7 @@ def serve(target: str, port: int, board: Board):
         def do_HEAD(self):
             self.send_error(405)
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = Server(("127.0.0.1", port), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 

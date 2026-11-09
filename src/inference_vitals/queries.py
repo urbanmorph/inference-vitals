@@ -104,3 +104,13 @@ SWAP_RATE = (
 )
 # live while a page is written (page + tokens so far); between pages, the last page in full
 CONTEXT = "(vitals_current_context_tokens or vitals_last_context_used_tokens) / vitals_context_limit_tokens"
+
+# Metrics that are a ceiling: a chart that draws one ends its axis there (the machine's own memory, not a
+# round number above it), so the lines below it read against the real limit.
+LIMITS = (
+    "macmon_memory_ram_total_bytes",
+    "vitals_gpu_memory_limit_bytes",
+    "vitals_gpu_memory_total_bytes",
+    "vitals_gpu_power_limit_watts",
+    "vitals_context_limit_tokens",
+)

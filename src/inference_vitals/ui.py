@@ -23,12 +23,13 @@ import urllib.request
 
 from inference_vitals import monitor, training
 from inference_vitals.grafana import REPO, dashboard
-from inference_vitals.metrics import run_until_interrupt
+from inference_vitals.metrics import Server, run_until_interrupt
 from inference_vitals.queries import (
     ACTIVE,
     CONTEXT,
     HW,
     IDLE,
+    LIMITS,
     LINUX,
     MAC,
     PHASE_NAMES,
@@ -245,6 +246,12 @@ def _favourites(platform: str, views: list) -> dict:
     return {"inference": common, "training": [by_key["training"][0], *common]}
 
 
+def _target(t: dict) -> dict:
+    """A chart line for the page; one that is a ceiling (queries.LIMITS) says so, and the axis ends there."""
+    line = {"expr": t["expr"], "legend": t.get("legendFormat", "")}
+    return {**line, "limit": True} if any(m in t["expr"] for m in LIMITS) else line
+
+
 def _sections(platform: str) -> list[dict]:
     """The Grafana dashboard's folded sections, panel for panel: same titles, queries, legends and units."""
     out = []
@@ -255,7 +262,7 @@ def _sections(platform: str) -> list[dict]:
             {
                 "title": p["title"],
                 "unit": p["fieldConfig"]["defaults"].get("unit", "none"),
-                "targets": [{"expr": t["expr"], "legend": t.get("legendFormat", "")} for t in p["targets"]],
+                "targets": [_target(t) for t in p["targets"]],
             }
             for p in row["panels"]
         ]
@@ -343,7 +350,7 @@ def serve(port: int, platform: str, prometheus: str = f"http://127.0.0.1:{monito
 
         do_PUT = do_DELETE = do_PATCH = do_POST
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = Server(("127.0.0.1", port), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 

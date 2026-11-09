@@ -335,3 +335,35 @@ def test_state_names_come_from_the_code_that_defines_the_states():
     learning = next(t for t in spec["training"]["tiles"] if t["title"] == "Learning?")
     assert len(learning["names"]) == 3 and learning["names"][training.MEMORISING] == "Memorising"
     assert queries.PHASE_NAMES[metrics.WRITING] == "Writing (decode)"
+
+
+@pytest.mark.parametrize("platform", queries.PLATFORMS)
+def test_charts_mark_the_lines_that_are_a_limit_so_the_axis_can_end_there(platform):
+    lines = [t for c in ui.spec(platform)["charts"].values() for t in c["targets"]]
+    limits = {t["legend"].split(",")[0].split(" {")[0] for t in lines if t.get("limit")}
+    if platform == queries.MAC:
+        assert {"RAM total", "GPU limit"} <= limits
+    else:
+        assert {"total"} <= limits and "limit" in limits  # VRAM total, the GPUs' power limit
+    assert not any(t.get("limit") for t in lines if "used" in t["legend"] or "in use" in t["legend"])
+
+
+def test_the_page_server_takes_a_first_load_burst_without_dropping_connections():
+    # a first visit asks ~40 things at once; the standard queue of 5 waiting connections reset the rest
+    import concurrent.futures
+    import urllib.request
+
+    server = ui.serve(0, queries.MAC, "http://127.0.0.1:9")  # no Prometheus needed for /api/spec
+    port = server.server_address[1]
+    try:
+        with concurrent.futures.ThreadPoolExecutor(80) as pool:
+            codes = list(
+                pool.map(
+                    lambda _: urllib.request.urlopen(f"http://127.0.0.1:{port}/api/spec", timeout=10).status,
+                    range(80),
+                )
+            )
+        assert codes == [200] * 80
+    finally:
+        server.shutdown()
+        server.server_close()

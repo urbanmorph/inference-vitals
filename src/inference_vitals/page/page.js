@@ -143,10 +143,14 @@ function steps(names, i) {
   return `<div class="steps">${names.map((_, k) => `<span style="${i !== null && k <= i ? `background:${color(stepTone(k))};opacity:${k === i ? 1 : .45}` : ""}"></span>`).join("")}</div>
     <div class="steps-l">${names.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
 }
-function niceMax(v) {  // the next round number at or above v: 1, 2, 2.5 or 5 times a power of ten
+function niceMax(v) {  // the next round number at or above v: 1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6 or 8 × a power of ten
   if (!v || v <= 0) return 1;
   const p = 10 ** Math.floor(Math.log10(v));
-  return [1, 2, 2.5, 5, 10].map((m) => m * p).find((x) => x >= v * 0.999);
+  return [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((m) => m * p).find((x) => x >= v * 0.999);
+}
+function axisTop(values, limits) {  // a chart with a limit line ends at the limit, unless a reading is above it
+  const top = Math.max(0, ...values), limit = limits.length ? Math.max(...limits) : 0;
+  return limit && top <= limit ? limit : niceMax(Math.max(top, limit));
 }
 
 // ---- tiles ----
@@ -389,7 +393,7 @@ async function renderChart(el, panel, win = null) {
   const series = [];
   await Promise.all(panel.targets.map(async (t, ti) => {
     for (const s of await rangeQuery(t.expr, 240, win)) {
-      series.push({ order: ti, axis: t.axis || "left", unit: t.unit || panel.unit, name: label(t.legend, s.metric),
+      series.push({ order: ti, axis: t.axis || "left", unit: t.unit || panel.unit, name: label(t.legend, s.metric), limit: !!t.limit,
         points: s.values.map(([x, y]) => [x, parseFloat(y)]).filter((p) => Number.isFinite(p[1])) });
     }
   }));
@@ -401,8 +405,9 @@ async function renderChart(el, panel, win = null) {
   }
   const [start, end] = win || rangeWindow();
   const hasRight = series.some((s) => s.axis === "right"), L = 64, R = hasRight ? 56 : 12, T = 8, B = 22;
-  const bounds = (axis) => { const v = series.filter((s) => s.axis === axis).flatMap((s) => s.points.map((p) => p[1]));
-    return v.length ? [Math.min(0, ...v), niceMax(Math.max(...v))] : [0, 1]; };
+  const bounds = (axis) => { const on = series.filter((s) => s.axis === axis), v = on.flatMap((s) => s.points.map((p) => p[1]));
+    const limits = on.filter((s) => s.limit).flatMap((s) => s.points.map((p) => p[1]));
+    return v.length ? [Math.min(0, ...v), axisTop(v, limits)] : [0, 1]; };
   const ax = { left: bounds("left"), right: bounds("right") };
   const X = (t) => L + ((t - start) / (end - start)) * (svgW - L - R);
   const Y = (v, a) => T + (1 - (v - ax[a][0]) / ((ax[a][1] - ax[a][0]) || 1)) * (H - T - B);
@@ -585,5 +590,5 @@ async function main() {
 if (typeof document !== "undefined") main();
 if (typeof module !== "undefined") {
   module.exports = { fmt, text, axisText, compact, niceMax, energyText, tone, nearest, readout, duration, clockText, modeOf, batteryText, leftText, ofText, runWindow,
-    favouritesFor, toggled, viewFrom, chartHeight, perToken, runState, starred, addressFor, sharedAsk, TILES, useSpec };
+    favouritesFor, toggled, viewFrom, chartHeight, perToken, runState, starred, addressFor, sharedAsk, TILES, useSpec, axisTop };
 }

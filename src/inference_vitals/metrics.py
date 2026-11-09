@@ -242,6 +242,14 @@ class Metrics:
             )
 
 
+class Server(http.server.ThreadingHTTPServer):
+    """Every inference-vitals server: one thread per request, and room for a burst of connections (a page's
+    first load asks ~40 things at once; the standard queue of 5 waiting connections reset the rest)."""
+
+    request_queue_size = 128
+    daemon_threads = True
+
+
 def run_until_interrupt(*servers, sleep=time.sleep):
     """Keep the process (and its servers' threads) alive until Ctrl-C, then stop every server."""
     try:
@@ -277,6 +285,6 @@ def serve(source, port: int):
             self.end_headers()
             self.wfile.write(body)
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = Server(("127.0.0.1", port), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
