@@ -51,6 +51,15 @@ open http://127.0.0.1:3000
 The machine's numbers appear straight away. Linux with NVIDIA, Grafana, troubleshooting:
 [docs/install.md](docs/install.md).
 
+To update, then pick up the new version (`start` restarts whatever an older one left running):
+
+```sh
+uv tool upgrade inference-vitals
+inference-vitals start
+```
+
+What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+
 ## Connect what you run
 
 | You run… | Then | More |

@@ -123,3 +123,9 @@ def test_every_release_has_notes_in_the_changelog_and_the_release_uses_them():
     assert mod.notes("## 0.3.0\n\nnew\n\n## 0.2.0\n\nold\n", "0.2.0").strip() == "old"
     flow = (ROOT / ".github/workflows/release.yml").read_text()
     assert "scripts/release_notes.py" in flow and "--notes-file" in flow and "--generate-notes" not in flow
+
+
+def test_the_readme_says_how_to_update_next_to_how_to_install():
+    quick = (ROOT / "README.md").read_text().split("## Quick start", 1)[1].split("\n## ", 1)[0]
+    assert "uv tool upgrade inference-vitals" in quick and "inference-vitals start" in quick
+    assert "CHANGELOG.md" in quick  # what changed, one click away
