@@ -5,6 +5,7 @@
   </picture>
 </h1>
 
+[![Website](https://img.shields.io/badge/site-vitals.urbanmorph.com-73BF69?cacheSeconds=86400)](https://vitals.urbanmorph.com)
 [![PyPI](https://img.shields.io/pypi/v/inference-vitals?cacheSeconds=3600)](https://pypi.org/project/inference-vitals/)
 [![Python](https://img.shields.io/pypi/pyversions/inference-vitals?cacheSeconds=86400)](https://pypi.org/project/inference-vitals/)
 [![Licence: MIT](https://img.shields.io/badge/license-MIT-blue?cacheSeconds=86400)](LICENSE)
