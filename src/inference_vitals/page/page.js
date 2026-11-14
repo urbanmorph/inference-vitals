@@ -573,7 +573,6 @@ function useSpec(spec, wanted) {  // the dashboard's description, and a range it
 }
 async function main() {
   useSpec(await (await fetch("/api/spec")).json(), asked.get("range"));
-  $("repo").href = SPEC.repo;
   $("repo-link").href = SPEC.repo;
   $("repo-link").textContent = SPEC.repo.replace(/^https:\/\//, "");
   $("version").textContent = `v${SPEC.version}`;
