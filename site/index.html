@@ -64,12 +64,20 @@ nav.top a:hover{color:var(--ink)}
 h1{font-size:clamp(34px,5.2vw,58px);line-height:1.04;letter-spacing:-.022em;font-weight:600;margin:0 0 20px;max-width:15ch}
 .lede{font-size:clamp(17px,1.6vw,19px);color:var(--muted);margin:0 0 28px;max-width:44ch}
 .lede strong{color:var(--ink);font-weight:500}
-.install{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:16px 18px;position:relative;max-width:520px}
-.install pre{margin:0;font:400 14.5px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace;overflow-x:auto}
+.install{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:10px 18px 16px;max-width:560px}
+.install .bar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 -8px 10px;flex-wrap:wrap}
+.install [role=tablist]{display:flex;gap:4px;flex-wrap:wrap}
+.install button{font:500 13.5px/1 "Instrument Sans",-apple-system,sans-serif;color:#aab3bf;background:transparent;border:1px solid transparent;border-radius:6px;padding:7px 10px;cursor:pointer}
+.install [role=tab][aria-selected=true]{color:var(--code-ink);background:#2b313a}
+.install [role=tab]:hover,.install .copy:hover{color:var(--code-ink)}
+.install .copy{border-color:#4a525e;color:var(--code-ink)}
+.install .exp{font-weight:400;color:#f2b07a}
+@media (max-width:560px){.install .long,.install .exp{display:none}.install .bar{flex-wrap:nowrap}}
+.install pre{margin:0;font:400 14.5px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .install .c{color:#8b95a3}
-.install button{position:absolute;top:10px;right:10px;font:500 13px/1 inherit;font-family:inherit;color:var(--code-ink);background:transparent;border:1px solid #4a525e;border-radius:6px;padding:7px 10px;cursor:pointer}
-.install button:hover{border-color:var(--speed)}
-@media (max-width:560px){.install{padding-top:48px}}
+.install .exp-note{font-size:13.5px;line-height:1.5;color:#aab3bf;margin:12px 0 0}
+.install .exp-note a{color:var(--code-ink)}
+.install .exp-note code{font:400 12.5px ui-monospace,"SF Mono",Menlo,monospace}
 .meta{margin:14px 0 0;font-size:14px;color:var(--muted)}
 
 .trace{margin:0;background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:18px 18px 12px}
@@ -137,6 +145,13 @@ details[open] summary::after{content:"\2212"}
 details p{margin:10px 0 2px;color:var(--muted);max-width:var(--measure)}
 details code{font:400 14.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace}
 
+.help{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,3vw,40px)}
+@media (max-width:820px){.help{grid-template-columns:1fr}}
+.help > div{border-top:3px solid var(--speed);padding-top:16px}
+.help p{margin:0 0 10px;color:var(--muted)}
+.help a.go{font-weight:600;text-decoration:none;color:var(--speed-ink)}
+.help a.go:hover{text-decoration:underline}
+
 footer{border-top:1px solid var(--rule);padding:32px 0 48px;font-size:14.5px;color:var(--muted)}
 footer .cols{display:flex;flex-wrap:wrap;gap:12px 40px;justify-content:space-between}
 footer ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px}
@@ -154,6 +169,7 @@ footer p{margin:0 0 6px;max-width:60ch}
     <a href="#records">What it records</a>
     <a href="#connect">Connect</a>
     <a href="#faq">Questions</a>
+    <a href="#help">Help it along</a>
     <a class="gh" href="https://github.com/urbanmorph/inference-vitals">GitHub</a>
   </nav>
 </header>
@@ -162,15 +178,31 @@ footer p{margin:0 0 6px;max-width:60ch}
 <div class="hero">
   <div>
     <h1>See why your local model slowed down</h1>
-    <p class="lede">A free dashboard for running and fine-tuning AI models on an <strong>Apple Silicon Mac</strong>. It sits beside whatever you run and puts <strong>the model and the machine on one timeline</strong>: tokens per second and loss beside memory, swap, GPU heat and power.</p>
+    <p class="lede">A free dashboard for running and fine-tuning AI models on an <strong>Apple Silicon Mac</strong>, or on Linux with NVIDIA GPUs (experimental). It sits beside whatever you run and puts <strong>the model and the machine on one timeline</strong>: tokens per second and loss beside memory, swap, GPU heat and power.</p>
     <div class="install">
-      <button type="button" data-copy="brew install uv prometheus macmon&#10;uv tool install inference-vitals&#10;inference-vitals start&#10;open http://127.0.0.1:3000">Copy</button>
-<pre><code>brew install uv prometheus macmon
+      <div class="bar">
+        <div role="tablist" aria-label="Your machine">
+          <button type="button" role="tab" id="tab-mac" aria-selected="true" aria-controls="panel-mac"><span class="long">Apple Silicon </span>Mac</button>
+          <button type="button" role="tab" id="tab-linux" aria-selected="false" aria-controls="panel-linux" tabindex="-1">Linux + NVIDIA <span class="exp">experimental</span></button>
+        </div>
+        <button type="button" class="copy">Copy</button>
+      </div>
+      <div role="tabpanel" id="panel-mac" aria-labelledby="tab-mac"><pre id="install-mac"><code>brew install uv prometheus macmon
 uv tool install inference-vitals
 inference-vitals start
-open http://127.0.0.1:3000</code></pre>
+open http://127.0.0.1:3000</code></pre></div>
+      <div role="tabpanel" id="panel-linux" aria-labelledby="tab-linux" hidden><pre id="install-linux"><code><span class="c"># needs the NVIDIA driver (nvidia-smi) and uv</span>
+<span class="c"># Prometheus: Debian/Ubuntu, or the release from prometheus.io</span>
+sudo apt install prometheus
+<span class="c"># only if the package started a service of its own</span>
+sudo systemctl disable --now prometheus
+uv tool install inference-vitals
+inference-vitals start
+xdg-open http://127.0.0.1:3000</code></pre>
+        <p class="exp-note">Experimental: tested against recorded <code>nvidia-smi</code> output and in a container, not yet on real NVIDIA hardware. If you try it, <a href="https://github.com/urbanmorph/inference-vitals/issues/new">tell us what you see</a>.</p>
+      </div>
     </div>
-    <p class="meta">v0.2.1 · MIT · <a href="https://pypi.org/project/inference-vitals/">PyPI</a> · Linux with NVIDIA: <a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md#on-linux-with-nvidia-gpus-experimental">experimental</a></p>
+    <p class="meta">v0.2.1 · MIT · <a href="https://pypi.org/project/inference-vitals/">PyPI</a> · <a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md">Install guide and troubleshooting</a></p>
   </div>
 
   <figure class="trace" aria-labelledby="trace-cap">
@@ -279,6 +311,28 @@ open http://127.0.0.1:3000</code></pre>
   <details><summary>Which machines does it run on?</summary><p>Apple Silicon Macs (it reads the chip through macmon, which needs Apple Silicon, so not Intel Macs), and Linux with NVIDIA GPUs as an experimental option. AMD and Intel GPUs and Windows are not supported.</p></details>
   <details><summary>How is it different from Activity Monitor or nvtop?</summary><p>Activity Monitor and nvtop show the machine and know nothing about models; benchmark apps time only the requests they send themselves. inference-vitals records both sides of whatever you run, the model and the machine, on the same timeline, so you can see why a run slowed down: the GPU got hot, the system started swapping, or a page was simply longer.</p></details>
 </section>
+
+<section id="help" aria-labelledby="help-h">
+  <h2 id="help-h">Help it along</h2>
+  <p>It is young, free and open source (MIT). Three things make the most difference.</p>
+  <div class="help">
+    <div>
+      <h3>Star it on GitHub</h3>
+      <p>Stars are how people running local models find a tool like this one.</p>
+      <a class="go" href="https://github.com/urbanmorph/inference-vitals">Star inference-vitals</a>
+    </div>
+    <div>
+      <h3>Tell us what you see</h3>
+      <p>Above all on Linux with NVIDIA GPUs: it has not yet run on real NVIDIA hardware. Say which machine and engine, and what the page showed.</p>
+      <a class="go" href="https://github.com/urbanmorph/inference-vitals/issues/new">Open an issue</a>
+    </div>
+    <div>
+      <h3>Contribute</h3>
+      <p>Add a trainer, support for another engine, or a fix. The guide has the checks to run and where everything is.</p>
+      <a class="go" href="https://github.com/urbanmorph/inference-vitals/blob/main/CONTRIBUTING.md">Read CONTRIBUTING.md</a>
+    </div>
+  </div>
+</section>
 </main>
 
 <footer>
@@ -298,11 +352,26 @@ open http://127.0.0.1:3000</code></pre>
 </footer>
 </div>
 <script>
-document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; }
+const tabs = [...document.querySelectorAll(".install [role=tab]")];
+const pick = (t) => tabs.forEach((x) => {
+  const on = x === t;
+  x.setAttribute("aria-selected", on); x.tabIndex = on ? 0 : -1;
+  document.getElementById(x.getAttribute("aria-controls")).hidden = !on;
+});
+tabs.forEach((t, i) => {
+  t.addEventListener("click", () => pick(t));
+  t.addEventListener("keydown", (e) => {
+    const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (k) { const n = tabs[(i + k + tabs.length) % tabs.length]; pick(n); n.focus(); }
+  });
+});
+document.querySelector(".install .copy").addEventListener("click", async (e) => {
+  const b = e.currentTarget, pre = document.querySelector(".install [role=tabpanel]:not([hidden]) pre");
+  const text = pre.textContent.split("\n").filter((l) => !l.trim().startsWith("#")).map((l) => l.replace(/\s+#.*$/, "")).join("\n");
+  try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; }
   catch { b.textContent = "Select and copy"; }
   setTimeout(() => (b.textContent = "Copy"), 1600);
-}));
+});
 </script>
 <!-- Cloudflare Web Analytics: page views only, no cookies -->
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "0bb15f1bbc284b3ba19a66752af2f54b"}'></script>
