@@ -68,3 +68,9 @@ def test_github_pages_serves_it_at_its_own_address():
     llms = (SITE / "llms.txt").read_text()
     assert llms.startswith("# inference-vitals\n\n> ")
     assert all(link.startswith("https://") for link in re.findall(r"\]\(([^)]+)\)", llms))
+
+
+def test_visits_are_counted_by_cloudflare_web_analytics():
+    # the ops dashboard reads them (ops-dashboard worker/src/apps.js); one beacon, the site's own token
+    assert PAGE.count("static.cloudflareinsights.com/beacon.min.js") == 1
+    assert '"token": "0bb15f1bbc284b3ba19a66752af2f54b"' in PAGE
