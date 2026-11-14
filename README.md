@@ -1,8 +1,8 @@
 <h1>
-  <picture>
+  <a href="https://vitals.urbanmorph.com"><picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-dark.svg">
     <img alt="inference-vitals" src="docs/brand/logo-light.svg" height="48">
-  </picture>
+  </picture></a>
 </h1>
 
 [![Website](https://img.shields.io/badge/site-vitals.urbanmorph.com-73BF69?cacheSeconds=86400)](https://vitals.urbanmorph.com)
