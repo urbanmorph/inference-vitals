@@ -388,3 +388,10 @@ def test_favourites_fill_the_two_by_two_grid_in_both_modes(platform):
     machine = "Mac memory and swap in use" if platform == queries.MAC else "Memory available (percent)"
     assert len(fav["inference"]) == 4 and fav["inference"][-1] == machine  # no empty quarter on a first look
     assert len(fav["training"]) == 4
+
+
+def test_the_brand_in_the_header_opens_the_website(page):
+    url, _ = page
+    body = _get(url + "/")[2].decode()
+    brand = body.split('class="brand"', 1)[1].split(">", 1)[0]
+    assert 'href="https://vitals.urbanmorph.com"' in brand and "GitHub" not in brand
