@@ -2,6 +2,7 @@
 is the package's, every file it points to exists, every docs link names a real doc and heading, and search
 engines and agents are told where it lives."""
 
+import html
 import json
 import pathlib
 import re
@@ -74,3 +75,33 @@ def test_visits_are_counted_by_cloudflare_web_analytics():
     # the ops dashboard reads them (ops-dashboard worker/src/apps.js); one beacon, the site's own token
     assert PAGE.count("static.cloudflareinsights.com/beacon.min.js") == 1
     assert '"token": "0bb15f1bbc284b3ba19a66752af2f54b"' in PAGE
+
+
+def _commands(block_id):
+    block = re.search(rf'<pre id="{block_id}"><code>(.*?)</code></pre>', PAGE, re.DOTALL).group(1)
+    return [
+        ln.strip()
+        for ln in html.unescape(re.sub(r"<[^>]+>", "", block)).splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+
+
+def test_the_install_commands_are_the_docs_own_for_mac_and_linux():
+    readme, install = (ROOT / "README.md").read_text(), (ROOT / "docs" / "install.md").read_text()
+    for cmd in _commands("install-mac"):
+        assert cmd in readme, cmd
+    linux = _commands("install-linux")
+    assert "xdg-open http://127.0.0.1:3000" in linux
+    for cmd in linux:
+        assert cmd.split("  #")[0].strip() in install, cmd
+    assert "experimental" in PAGE[PAGE.index('id="install-linux"') - 600 : PAGE.index('id="install-linux"')]
+
+
+def test_it_asks_for_a_star_an_issue_and_a_contribution():
+    gh = "https://github.com/urbanmorph/inference-vitals"
+    assert f'href="{gh}/issues/new"' in PAGE
+    assert f'href="{gh}/stargazers"' in PAGE or f'href="{gh}"' in PAGE
+    assert f'href="{REPO}CONTRIBUTING.md"' in PAGE
+    assert (
+        "real NVIDIA" in PAGE
+    )  # the Linux route has not run on real hardware yet: the ask that matters most
