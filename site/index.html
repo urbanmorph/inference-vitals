@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>inference-vitals: local LLM speed, memory and heat on a Mac</title>
+<meta name="description" content="A free dashboard for running and fine-tuning AI models on an Apple Silicon Mac: tokens per second, loss, memory, swap, GPU heat and power on one timeline.">
+<link rel="canonical" href="https://vitals.urbanmorph.com/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f5f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14171c" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="inference-vitals">
+<meta property="og:title" content="inference-vitals: see why your local model slowed down">
+<meta property="og:description" content="Model speed and loss beside the machine's memory, swap, heat and power, on one timeline. Apple Silicon; Linux with NVIDIA experimental. Free, MIT, everything stays on your machine.">
+<meta property="og:url" content="https://vitals.urbanmorph.com/">
+<meta property="og:image" content="https://vitals.urbanmorph.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="fonts/instrument-sans-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/instrument-sans-600.woff2" as="font" type="font/woff2" crossorigin>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"inference-vitals","url":"https://vitals.urbanmorph.com/","description":"A local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs: model speed and loss beside the machine's memory, swap, heat, power and battery, on one timeline. Works with Ollama, LM Studio, llama.cpp, the MLX servers and your own code.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS (Apple Silicon), Linux (NVIDIA, experimental)","softwareVersion":"0.2.1","license":"https://opensource.org/licenses/MIT","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/inference-vitals/","installUrl":"https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md","codeRepository":"https://github.com/urbanmorph/inference-vitals","screenshot":"https://vitals.urbanmorph.com/img/at-a-glance-dark.webp","author":{"@type":"Organization","name":"urbanmorph","url":"https://github.com/urbanmorph"},"sameAs":["https://github.com/urbanmorph/inference-vitals","https://pypi.org/project/inference-vitals/"]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Does it work with Ollama, LM Studio and llama.cpp?","acceptedAnswer":{"@type":"Answer","text":"Yes. Run inference-vitals proxy in front of any engine with an HTTP API (Ollama, LM Studio, llama.cpp, the MLX servers, Jan, LocalAI) and point your app at the proxy. It measures each request on its way through: speed while the answer is written, time to first token, context used, answers cut off or invalid. Your own Python code can report the same numbers with three calls."}},
+{"@type":"Question","name":"Can it follow an MLX fine-tune?","acceptedAnswer":{"@type":"Answer","text":"Yes. Wrap the training command (inference-vitals train -- your command), follow its log file, or report from your own loop. It shows training and validation loss, steps and time left, tokens trained per second, peak memory against the GPU limit, and whether the model is still learning or has started memorising its examples."}},
+{"@type":"Question","name":"Does anything leave my machine?","acceptedAnswer":{"@type":"Answer","text":"No. Every service listens on 127.0.0.1, the page loads nothing from the internet, and only numbers are collected: prompts, answers and file names never reach it. Configuration, history and logs stay in ~/.local/state/inference-vitals."}},
+{"@type":"Question","name":"Does it slow the model down?","acceptedAnswer":{"@type":"Answer","text":"Very little. The services take a few hundred MB of memory between them and very little CPU, and an open page does nothing while its tab is hidden. For a run where speed matters, close the tab: Prometheus keeps recording, and you can look at the whole run afterwards."}},
+{"@type":"Question","name":"Which machines does it run on?","acceptedAnswer":{"@type":"Answer","text":"Apple Silicon Macs (it reads the chip through macmon, which needs Apple Silicon, so not Intel Macs), and Linux with NVIDIA GPUs as an experimental option. AMD and Intel GPUs and Windows are not supported."}},
+{"@type":"Question","name":"How is it different from Activity Monitor or nvtop?","acceptedAnswer":{"@type":"Answer","text":"Activity Monitor and nvtop show the machine and know nothing about models; benchmark apps time only the requests they send themselves. inference-vitals records both sides of whatever you run, the model and the machine, on the same timeline, so you can see why a run slowed down: the GPU got hot, the system started swapping, or a page was simply longer."}}]}</script>
+<style>
+@font-face{font-family:"Instrument Sans";src:url(fonts/instrument-sans-400.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Instrument Sans";src:url(fonts/instrument-sans-500.woff2) format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"Instrument Sans";src:url(fonts/instrument-sans-600.woff2) format("woff2");font-weight:600;font-display:swap}
+:root{
+  --bg:#f3f5f4;--surface:#ffffff;--ink:#1f2328;--muted:#5b6576;--rule:#d9dfdc;
+  --speed:#3f9a36;--speed-ink:#2e7a27;--heat:#d4632a;--code-bg:#1f2328;--code-ink:#e8ece9;
+  --measure:68ch;--gutter:clamp(16px,4vw,40px)
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#14171c;--surface:#1b1f26;--ink:#e6e9ec;--muted:#9aa3b0;--rule:#2b313a;
+  --speed:#73bf69;--speed-ink:#8fd086;--heat:#f2994a;--code-bg:#0d1014;--code-ink:#e6e9ec
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.6 "Instrument Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+a{color:inherit;text-decoration-color:var(--speed);text-underline-offset:3px;text-decoration-thickness:1.5px}
+a:hover{color:var(--speed-ink)}
+:focus-visible{outline:2px solid var(--speed);outline-offset:3px;border-radius:3px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--gutter)}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:19px;text-decoration:none}
+.brand svg{width:30px;height:30px}
+.brand .dash{color:var(--speed)}
+nav.top{display:flex;gap:22px;font-size:15px}
+nav.top a{text-decoration:none;color:var(--muted)}
+nav.top a:hover{color:var(--ink)}
+@media (max-width:640px){nav.top a:not(.gh){display:none}}
+
+/* the hero: the claim, the install, and the one picture of the idea */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:clamp(28px,5vw,64px);align-items:center;padding:clamp(28px,6vw,72px) 0 clamp(32px,5vw,56px)}
+@media (max-width:880px){.hero{grid-template-columns:minmax(0,1fr)}}
+h1{font-size:clamp(34px,5.2vw,58px);line-height:1.04;letter-spacing:-.022em;font-weight:600;margin:0 0 20px;max-width:15ch}
+.lede{font-size:clamp(17px,1.6vw,19px);color:var(--muted);margin:0 0 28px;max-width:44ch}
+.lede strong{color:var(--ink);font-weight:500}
+.install{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:16px 18px;position:relative;max-width:520px}
+.install pre{margin:0;font:400 14.5px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace;overflow-x:auto}
+.install .c{color:#8b95a3}
+.install button{position:absolute;top:10px;right:10px;font:500 13px/1 inherit;font-family:inherit;color:var(--code-ink);background:transparent;border:1px solid #4a525e;border-radius:6px;padding:7px 10px;cursor:pointer}
+.install button:hover{border-color:var(--speed)}
+@media (max-width:560px){.install{padding-top:48px}}
+.meta{margin:14px 0 0;font-size:14px;color:var(--muted)}
+
+.trace{margin:0;background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:18px 18px 12px}
+.trace figcaption{font-size:14px;color:var(--muted);margin:6px 4px 0}
+.trace svg{display:block;width:100%;height:auto}
+.trace .grid{stroke:var(--rule);stroke-width:1}
+.trace .axis{fill:var(--muted);font-size:17px}
+.trace .speed{stroke:var(--speed);stroke-width:4;fill:none;stroke-linejoin:round;stroke-linecap:round}
+.trace .heat{stroke:var(--heat);stroke-width:4;fill:none;stroke-linejoin:round;stroke-linecap:round}
+.trace .mark{stroke:var(--ink);stroke-width:1.25;stroke-dasharray:3 4;opacity:.55}
+.trace .note{fill:var(--ink);font-size:21px;font-weight:600}
+.trace .note2{fill:var(--muted);font-size:18px}
+.trace .key{font-size:18px;fill:var(--muted)}
+@media (prefers-reduced-motion:no-preference){
+  .trace .speed,.trace .heat{stroke-dasharray:900;stroke-dashoffset:900;animation:draw 1.6s .2s ease-out forwards}
+  .trace .heat{animation-delay:.35s}
+  .trace .later{opacity:0;animation:show .5s 1.6s ease-out forwards}
+}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes show{to{opacity:1}}
+
+.shot{margin:0 0 clamp(48px,7vw,88px)}
+.shot img{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--rule);box-shadow:0 18px 50px -24px rgba(20,23,28,.35)}
+.shot figcaption{font-size:14px;color:var(--muted);margin-top:10px}
+
+section{padding:0 0 clamp(48px,7vw,88px)}
+h2{font-size:clamp(26px,3vw,34px);line-height:1.15;letter-spacing:-.015em;font-weight:600;margin:0 0 12px}
+h2 + p{color:var(--muted);max-width:var(--measure);margin:0 0 28px}
+h3{font-size:18px;font-weight:600;margin:0 0 8px}
+
+/* what it records: three columns, each topped by the line colour it draws in */
+.records{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,3vw,40px)}
+@media (max-width:820px){.records{grid-template-columns:1fr}}
+.records > div{border-top:3px solid var(--rule);padding-top:16px}
+.records > div.m{border-top-color:var(--speed)}
+.records > div.h{border-top-color:var(--heat)}
+.records ul{margin:0;padding-left:18px;color:var(--muted)}
+.records li{margin:4px 0}
+.records li strong{color:var(--ink);font-weight:500}
+
+.views{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:36px}
+@media (max-width:820px){.views{grid-template-columns:1fr}}
+.views figure{margin:0}
+.views img{display:block;width:100%;height:auto;border-radius:9px;border:1px solid var(--rule)}
+.views figcaption{font-size:14px;color:var(--muted);margin-top:8px}
+
+table.connect{width:100%;border-collapse:collapse;font-size:15.5px}
+table.connect th,table.connect td{text-align:left;vertical-align:top;padding:14px 16px 14px 0;border-bottom:1px solid var(--rule)}
+table.connect td:last-child{white-space:nowrap}
+table.connect th{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.01em}
+table.connect code{font:400 14px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;background:var(--surface);border:1px solid var(--rule);border-radius:5px;padding:1px 6px;white-space:nowrap}
+@media (max-width:720px){table.connect thead{display:none}table.connect tr{display:block;border-bottom:1px solid var(--rule);padding:10px 0}table.connect td{display:block;border:0;padding:3px 0}table.connect code{white-space:normal}}
+
+.private{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(20px,4vw,56px);align-items:start}
+@media (max-width:820px){.private{grid-template-columns:1fr}}
+.private p{margin:0 0 14px;max-width:var(--measure)}
+.private .big{font-size:clamp(20px,2.2vw,24px);line-height:1.35;font-weight:500}
+
+details{border-bottom:1px solid var(--rule);padding:14px 0}
+details:first-of-type{border-top:1px solid var(--rule)}
+summary{cursor:pointer;font-weight:600;font-size:17.5px;list-style:none;display:flex;justify-content:space-between;gap:16px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--muted);font-weight:400}
+details[open] summary::after{content:"\2212"}
+details p{margin:10px 0 2px;color:var(--muted);max-width:var(--measure)}
+details code{font:400 14.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+
+footer{border-top:1px solid var(--rule);padding:32px 0 48px;font-size:14.5px;color:var(--muted)}
+footer .cols{display:flex;flex-wrap:wrap;gap:12px 40px;justify-content:space-between}
+footer ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px}
+footer p{margin:0 0 6px;max-width:60ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <a class="brand" href="./" aria-label="inference-vitals home">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="currentColor" stroke-width="3" opacity=".6"><line x1="24" y1="4" x2="24" y2="10"/><line x1="24" y1="54" x2="24" y2="60"/><line x1="32" y1="4" x2="32" y2="10"/><line x1="32" y1="54" x2="32" y2="60"/><line x1="40" y1="4" x2="40" y2="10"/><line x1="40" y1="54" x2="40" y2="60"/><line x1="4" y1="24" x2="10" y2="24"/><line x1="54" y1="24" x2="60" y2="24"/><line x1="4" y1="32" x2="10" y2="32"/><line x1="54" y1="32" x2="60" y2="32"/><line x1="4" y1="40" x2="10" y2="40"/><line x1="54" y1="40" x2="60" y2="40"/><rect x="10" y="10" width="44" height="44" rx="9"/></g><polyline stroke="#73BF69" stroke-width="3.5" points="15,34 23,34 27,25 31,43 35,19 39,37 42,32 49,32"/></g></svg>
+    <span>inference<span class="dash">-</span>vitals</span>
+  </a>
+  <nav class="top" aria-label="Sections">
+    <a href="#records">What it records</a>
+    <a href="#connect">Connect</a>
+    <a href="#faq">Questions</a>
+    <a class="gh" href="https://github.com/urbanmorph/inference-vitals">GitHub</a>
+  </nav>
+</header>
+
+<main>
+<div class="hero">
+  <div>
+    <h1>See why your local model slowed down</h1>
+    <p class="lede">A free dashboard for running and fine-tuning AI models on an <strong>Apple Silicon Mac</strong>. It sits beside whatever you run and puts <strong>the model and the machine on one timeline</strong>: tokens per second and loss beside memory, swap, GPU heat and power.</p>
+    <div class="install">
+      <button type="button" data-copy="brew install uv prometheus macmon&#10;uv tool install inference-vitals&#10;inference-vitals start&#10;open http://127.0.0.1:3000">Copy</button>
+<pre><code>brew install uv prometheus macmon
+uv tool install inference-vitals
+inference-vitals start
+open http://127.0.0.1:3000</code></pre>
+    </div>
+    <p class="meta">v0.2.1 · MIT · <a href="https://pypi.org/project/inference-vitals/">PyPI</a> · Linux with NVIDIA: <a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md#on-linux-with-nvidia-gpus-experimental">experimental</a></p>
+  </div>
+
+  <figure class="trace" aria-labelledby="trace-cap">
+    <svg viewBox="0 0 760 300" role="img" aria-label="Tokens per second hold near 60 until the GPU passes 95 °C at 36 minutes, then fall to about 31.">
+      <g class="grid">
+        <line x1="56" y1="20" x2="690" y2="20"/><line x1="56" y1="70" x2="690" y2="70"/><line x1="56" y1="120" x2="690" y2="120"/><line x1="56" y1="170" x2="690" y2="170"/><line x1="56" y1="220" x2="690" y2="220"/>
+      </g>
+      <g class="axis">
+        <text x="48" y="26" text-anchor="end">80</text><text x="48" y="126" text-anchor="end">40</text><text x="48" y="226" text-anchor="end">0</text>
+        <text x="698" y="26">105°</text><text x="698" y="126">68°</text><text x="698" y="226">30°</text>
+        <text x="56" y="246">0 min</text><text x="353" y="246" text-anchor="middle">30</text><text x="690" y="246" text-anchor="end">64</text>
+      </g>
+      <polyline class="heat" points="56,135 155,113 254,92 353,65 393,52 412,44 452,41 571,41 650,42 690,41"/>
+      <polyline class="speed" points="56,70 105,67 155,71 204,68 254,70 303,67 353,70 393,70 412,90 432,120 452,140 472,144 531,142 610,143 690,142"/>
+      <g class="later">
+        <line class="mark" x1="412" y1="14" x2="412" y2="220"/>
+        <text class="note" x="426" y="182">36 min: GPU at 96 °C</text>
+        <text class="note2" x="426" y="207">speed falls from 60 to 31 tok/s</text>
+      </g>
+      <g class="key">
+        <line x1="56" y1="282" x2="84" y2="282" stroke="var(--speed)" stroke-width="4"/><text x="92" y="288">tokens per second</text>
+        <line x1="280" y1="282" x2="308" y2="282" stroke="var(--heat)" stroke-width="4"/><text x="316" y="288">GPU temperature</text>
+      </g>
+    </svg>
+    <figcaption id="trace-cap">An illustrative run. Activity Monitor would show the heat, a benchmark the slowdown; here they share one clock, so the cause is plain.</figcaption>
+  </figure>
+</div>
+
+<figure class="shot">
+  <picture>
+    <source srcset="img/at-a-glance-dark.webp" media="(prefers-color-scheme: dark)">
+    <img src="img/at-a-glance-light.webp" width="2000" height="1250" alt="The inference-vitals dashboard during a run: progress, writing and reading speed, time to first token, context used, GPU memory, swap, GPU temperature, thermal state and power, with charts of speed against temperature and memory against the GPU limit.">
+  </picture>
+  <figcaption>The page fits one screen: the live numbers stay in view while tabs swap the charts below them.</figcaption>
+</figure>
+
+<section id="records" aria-labelledby="records-h">
+  <h2 id="records-h">What it records</h2>
+  <p>Both sides of a run, the model and the machine, read every few seconds and kept so you can look back over any range.</p>
+  <div class="records">
+    <div class="m">
+      <h3>Model runs</h3>
+      <ul>
+        <li><strong>Speed</strong> live while the answer is written</li>
+        <li><strong>Time to first token</strong>, median and 95th percentile</li>
+        <li><strong>Context used</strong> against the window</li>
+        <li><strong>Answers cut off or invalid</strong></li>
+      </ul>
+    </div>
+    <div class="m">
+      <h3>Fine-tunes</h3>
+      <ul>
+        <li><strong>Training and validation loss</strong></li>
+        <li><strong>Steps and time left</strong>, tokens trained per second</li>
+        <li><strong>Still learning, or memorising</strong> its examples</li>
+        <li><strong>Peak memory</strong> against the GPU limit</li>
+      </ul>
+    </div>
+    <div class="h">
+      <h3>The machine</h3>
+      <ul>
+        <li><strong>GPU memory left</strong>, memory pressure, swap</li>
+        <li><strong>GPU use, temperatures</strong>, thermal state</li>
+        <li><strong>Power and energy</strong>, and the AI's share of it</li>
+        <li><strong>Battery</strong>: will it outlast the run?</li>
+      </ul>
+    </div>
+  </div>
+  <div class="views">
+    <figure><img src="img/memory.webp" width="1400" height="875" loading="lazy" alt="Memory tab: the model's GPU memory against the GPU limit, memory pressure and swap over time."><figcaption>Memory: the model against the GPU limit, and when swap starts.</figcaption></figure>
+    <figure><img src="img/power.webp" width="1400" height="875" loading="lazy" alt="Hardware tab: GPU and CPU power, temperatures and the energy used by the run."><figcaption>Power and heat: what the run used, and at what temperature.</figcaption></figure>
+    <figure><img src="img/training-dark.webp" width="1400" height="875" loading="lazy" alt="Training mode: training and validation loss, steps left and tokens trained per second during a fine-tune."><figcaption>Fine-tunes: loss, time left, and whether it is still learning.</figcaption></figure>
+  </div>
+</section>
+
+<section id="connect" aria-labelledby="connect-h">
+  <h2 id="connect-h">Connect what you run</h2>
+  <p>The machine's numbers appear as soon as it starts. For the model's, put one line in front of what you already use.</p>
+  <table class="connect">
+    <thead><tr><th scope="col">You run</th><th scope="col">Then</th><th scope="col">More</th></tr></thead>
+    <tbody>
+      <tr><td>An engine with an HTTP API: Ollama, LM Studio, llama.cpp, the MLX servers, Jan, LocalAI</td><td><code>inference-vitals proxy --to http://127.0.0.1:11434</code> and point your app at <code>http://127.0.0.1:8401</code></td><td><a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/connect.md#any-engine-with-an-http-api-the-proxy">The proxy</a></td></tr>
+      <tr><td>Your own Python code</td><td>Three calls from <code>inference_vitals.metrics</code></td><td><a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/connect.md#your-own-python-code-the-library">The library</a></td></tr>
+      <tr><td>A fine-tune: mlx-vlm, mlx-lm, or any training loop</td><td><code>inference-vitals train -- &lt;your training command&gt;</code></td><td><a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/training.md">Training</a></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="private" aria-labelledby="private-h">
+  <h2 id="private-h">It stays on your machine</h2>
+  <div class="private">
+    <p class="big">Every service listens on 127.0.0.1, the page loads nothing from the internet, and only numbers are collected. Prompts, answers and file names never reach it.</p>
+    <div>
+      <p>It is <a href="https://prometheus.io">Prometheus</a> with a dashboard page of its own (or <a href="https://grafana.com">Grafana</a>, with its reporting and sharing turned off), <a href="https://github.com/vladkens/macmon">macmon</a> for the chip on a Mac, small exporters for memory and the battery, the proxy, and a tiny Python library with no dependencies beyond Python itself.</p>
+      <p>The services take a few hundred MB of memory between them and very little CPU. More in <a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/limits.md">privacy, overhead and limits</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="faq" aria-labelledby="faq-h">
+  <h2 id="faq-h">Questions</h2>
+  <details><summary>Does it work with Ollama, LM Studio and llama.cpp?</summary><p>Yes. Run <code>inference-vitals proxy</code> in front of any engine with an HTTP API (Ollama, LM Studio, llama.cpp, the MLX servers, Jan, LocalAI) and point your app at the proxy. It measures each request on its way through: speed while the answer is written, time to first token, context used, answers cut off or invalid. Your own Python code can report the same numbers with three calls.</p></details>
+  <details><summary>Can it follow an MLX fine-tune?</summary><p>Yes. Wrap the training command (<code>inference-vitals train -- your command</code>), follow its log file, or report from your own loop. It shows training and validation loss, steps and time left, tokens trained per second, peak memory against the GPU limit, and whether the model is still learning or has started memorising its examples.</p></details>
+  <details><summary>Does anything leave my machine?</summary><p>No. Every service listens on 127.0.0.1, the page loads nothing from the internet, and only numbers are collected: prompts, answers and file names never reach it. Configuration, history and logs stay in <code>~/.local/state/inference-vitals</code>.</p></details>
+  <details><summary>Does it slow the model down?</summary><p>Very little. The services take a few hundred MB of memory between them and very little CPU, and an open page does nothing while its tab is hidden. For a run where speed matters, close the tab: Prometheus keeps recording, and you can look at the whole run afterwards.</p></details>
+  <details><summary>Which machines does it run on?</summary><p>Apple Silicon Macs (it reads the chip through macmon, which needs Apple Silicon, so not Intel Macs), and Linux with NVIDIA GPUs as an experimental option. AMD and Intel GPUs and Windows are not supported.</p></details>
+  <details><summary>How is it different from Activity Monitor or nvtop?</summary><p>Activity Monitor and nvtop show the machine and know nothing about models; benchmark apps time only the requests they send themselves. inference-vitals records both sides of whatever you run, the model and the machine, on the same timeline, so you can see why a run slowed down: the GPU got hot, the system started swapping, or a page was simply longer.</p></details>
+</section>
+</main>
+
+<footer>
+  <div class="cols">
+    <div>
+      <p>inference-vitals v0.2.1 · MIT · made by <a href="https://github.com/urbanmorph">urbanmorph</a></p>
+      <p>Runs macmon (MIT), Prometheus (Apache-2.0) and optionally Grafana (AGPL-3.0), installed separately; none is bundled.</p>
+    </div>
+    <ul aria-label="Documentation">
+      <li><a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md">Install</a></li>
+      <li><a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/dashboard.md">Dashboard</a></li>
+      <li><a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/metrics.md">Metrics</a></li>
+      <li><a href="https://github.com/urbanmorph/inference-vitals/blob/main/CHANGELOG.md">Changes</a></li>
+      <li><a href="https://github.com/urbanmorph/inference-vitals">GitHub</a></li>
+    </ul>
+  </div>
+</footer>
+</div>
+<script>
+document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; }
+  catch { b.textContent = "Select and copy"; }
+  setTimeout(() => (b.textContent = "Copy"), 1600);
+}));
+</script>
+</body>
+</html>

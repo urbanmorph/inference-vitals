@@ -1,0 +1,24 @@
+# inference-vitals
+
+> A local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA
+> GPUs (experimental): model speed and loss beside the machine's memory, swap, heat, power and battery,
+> on one timeline. Works with Ollama, LM Studio, llama.cpp, the MLX servers and your own code.
+> Prometheus plus its own page; everything on 127.0.0.1, numbers only. Free, MIT.
+
+Install on a Mac: `brew install uv prometheus macmon`, `uv tool install inference-vitals`,
+`inference-vitals start`, then open http://127.0.0.1:3000.
+
+## Docs
+
+- [Install](https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md): Mac and Linux, commands, troubleshooting, uninstall
+- [Connect](https://github.com/urbanmorph/inference-vitals/blob/main/docs/connect.md): the proxy for any engine with an HTTP API, and the Python library
+- [Training](https://github.com/urbanmorph/inference-vitals/blob/main/docs/training.md): following a fine-tune (mlx-vlm, mlx-lm, any loop)
+- [Dashboard](https://github.com/urbanmorph/inference-vitals/blob/main/docs/dashboard.md): every tile and tab, energy, battery
+- [Metrics](https://github.com/urbanmorph/inference-vitals/blob/main/docs/metrics.md): every metric name, for tools that read Prometheus
+- [Limits](https://github.com/urbanmorph/inference-vitals/blob/main/docs/limits.md): privacy, overhead, what it cannot show
+- [AGENTS.md](https://github.com/urbanmorph/inference-vitals/blob/main/AGENTS.md): for coding agents helping a user set it up
+
+## Elsewhere
+
+- [Source on GitHub](https://github.com/urbanmorph/inference-vitals)
+- [Package on PyPI](https://pypi.org/project/inference-vitals/)
