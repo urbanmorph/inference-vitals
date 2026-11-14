@@ -59,9 +59,9 @@ nav.top a:hover{color:var(--ink)}
 @media (max-width:640px){nav.top a:not(.gh){display:none}}
 
 /* the hero: the claim, the install, and the one picture of the idea */
-.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:clamp(28px,5vw,64px);align-items:center;padding:clamp(28px,6vw,72px) 0 clamp(32px,5vw,56px)}
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:clamp(24px,3.5vw,44px) clamp(28px,5vw,64px);align-items:start;padding:clamp(28px,6vw,72px) 0 clamp(32px,5vw,56px)}
 @media (max-width:880px){.hero{grid-template-columns:minmax(0,1fr)}}
-h1{font-size:clamp(34px,5.2vw,58px);line-height:1.04;letter-spacing:-.022em;font-weight:600;margin:0 0 20px;max-width:15ch}
+h1{grid-column:1/-1;font-size:clamp(34px,4.4vw,56px);line-height:1.05;letter-spacing:-.022em;font-weight:600;margin:0}
 .lede{font-size:clamp(17px,1.6vw,19px);color:var(--muted);margin:0 0 28px;max-width:44ch}
 .lede strong{color:var(--ink);font-weight:500}
 .install{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:10px 18px 16px;max-width:560px}
@@ -176,8 +176,8 @@ footer p{margin:0 0 6px;max-width:60ch}
 
 <main>
 <div class="hero">
+  <h1>See why your local model slowed down</h1>
   <div>
-    <h1>See why your local model slowed down</h1>
     <p class="lede">A free dashboard for running and fine-tuning AI models on an <strong>Apple Silicon Mac</strong>, or on Linux with NVIDIA GPUs (experimental). It sits beside whatever you run and puts <strong>the model and the machine on one timeline</strong>: tokens per second and loss beside memory, swap, GPU heat and power.</p>
     <div class="install">
       <div class="bar">
