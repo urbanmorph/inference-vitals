@@ -1,8 +1,9 @@
 # inference-vitals
 
-> A local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA
-> GPUs: model speed and loss beside the machine's memory, heat, power and battery, on one timeline.
-> Prometheus plus its own page; everything on 127.0.0.1, numbers only. MIT.
+> Training and inference on one timeline: a local, Prometheus-native dashboard for running and
+> fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs. Model speed and loss beside the
+> machine's memory, heat, power and battery. Prometheus plus its own page; everything on 127.0.0.1,
+> numbers only. MIT.
 
 ## Start here
 

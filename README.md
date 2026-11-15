@@ -12,9 +12,12 @@
 [![Tests](https://github.com/urbanmorph/inference-vitals/actions/workflows/test.yml/badge.svg)](https://github.com/urbanmorph/inference-vitals/actions/workflows/test.yml)
 [![Apple Silicon · Linux with NVIDIA](https://img.shields.io/badge/runs_on-Apple_Silicon_%C2%B7_Linux_%2B_NVIDIA-555?cacheSeconds=86400)](docs/install.md)
 
-**One screen for running and fine-tuning AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs
-(experimental): how fast the model is (or how well it is learning), how close it is to running out of
-memory, and how hot the machine is getting, on the same timeline.**
+**Training and inference on one timeline, open and Prometheus-native.**
+
+One screen for running and fine-tuning AI models on an Apple Silicon Mac, or on Linux with NVIDIA GPUs
+(experimental): how well a fine-tune is learning or how fast the model answers, how close the machine is
+to running out of memory, and how hot it is getting, on the same timeline. Everything is kept in
+Prometheus, so Grafana or any other tool can read it too.
 
 ![At a glance, during a run: speed, context, answers, memory, swap, GPU, heat and power](docs/screenshots/at-a-glance-dark.png)
 

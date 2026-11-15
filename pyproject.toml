@@ -1,7 +1,7 @@
 [project]
 name = "inference-vitals"
 version = "0.2.1"
-description = "A dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs: speed, loss, memory, heat, power and battery"
+description = "Training and inference on one timeline: a Prometheus-native dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs"
 authors = [
     { name = "Urban Morph" }
 ]
@@ -10,7 +10,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []
-keywords = ["llm", "inference", "fine-tuning", "apple-silicon", "mlx", "nvidia", "prometheus", "dashboard", "monitoring"]
+keywords = ["llm", "inference", "fine-tuning", "apple-silicon", "mlx", "nvidia", "prometheus", "grafana", "training", "dashboard", "monitoring", "observability"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Web Environment",
