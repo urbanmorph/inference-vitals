@@ -1,9 +1,10 @@
 # inference-vitals
 
-> A local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA
-> GPUs (experimental): model speed and loss beside the machine's memory, swap, heat, power and battery,
-> on one timeline. Works with Ollama, LM Studio, llama.cpp, the MLX servers and your own code.
-> Prometheus plus its own page; everything on 127.0.0.1, numbers only. Free, MIT.
+> Training and inference on one timeline: a local, Prometheus-native dashboard for running and
+> fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs (experimental). Model speed and
+> loss beside the machine's memory, swap, heat, power and battery. Works with Ollama, LM Studio, llama.cpp,
+> the MLX servers and your own code. Prometheus plus its own page; everything on 127.0.0.1, numbers only.
+> Free, MIT.
 
 Install on a Mac: `brew install uv prometheus macmon`, `uv tool install inference-vitals`,
 `inference-vitals start`, then open http://127.0.0.1:3000.

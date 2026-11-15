@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>inference-vitals: local LLM speed, memory and heat on a Mac</title>
-<meta name="description" content="A free dashboard for running and fine-tuning AI models on an Apple Silicon Mac: tokens per second, loss, memory, swap, GPU heat and power on one timeline.">
+<title>inference-vitals: local training and inference on one timeline</title>
+<meta name="description" content="Training and inference on one timeline: an open, Prometheus-native dashboard for local AI. Loss and tokens per second beside memory, swap, heat and power.">
 <link rel="canonical" href="https://vitals.urbanmorph.com/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta name="color-scheme" content="light dark">
@@ -12,8 +12,8 @@
 <meta name="theme-color" content="#14171c" media="(prefers-color-scheme: dark)">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="inference-vitals">
-<meta property="og:title" content="inference-vitals: see why your local model slowed down">
-<meta property="og:description" content="Model speed and loss beside the machine's memory, swap, heat and power, on one timeline. Apple Silicon; Linux with NVIDIA experimental. Free, MIT, everything stays on your machine.">
+<meta property="og:title" content="inference-vitals: training and inference on one timeline">
+<meta property="og:description" content="Training and inference on one timeline: a fine-tune's loss or a model's speed beside the machine's memory, swap, heat and power, kept in Prometheus. Apple Silicon; Linux with NVIDIA experimental. Free, MIT, everything stays on your machine.">
 <meta property="og:url" content="https://vitals.urbanmorph.com/">
 <meta property="og:image" content="https://vitals.urbanmorph.com/og.png">
 <meta property="og:image:width" content="1200">
@@ -21,7 +21,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="fonts/instrument-sans-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/instrument-sans-600.woff2" as="font" type="font/woff2" crossorigin>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"inference-vitals","url":"https://vitals.urbanmorph.com/","description":"A local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs: model speed and loss beside the machine's memory, swap, heat, power and battery, on one timeline. Works with Ollama, LM Studio, llama.cpp, the MLX servers and your own code.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS (Apple Silicon), Linux (NVIDIA, experimental)","softwareVersion":"0.2.1","license":"https://opensource.org/licenses/MIT","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/inference-vitals/","installUrl":"https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md","codeRepository":"https://github.com/urbanmorph/inference-vitals","screenshot":"https://vitals.urbanmorph.com/img/at-a-glance-dark.webp","author":{"@type":"Organization","name":"urbanmorph","url":"https://github.com/urbanmorph"},"sameAs":["https://github.com/urbanmorph/inference-vitals","https://pypi.org/project/inference-vitals/"]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"inference-vitals","url":"https://vitals.urbanmorph.com/","description":"Training and inference on one timeline: an open, Prometheus-native local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs. Model speed and loss beside the machine's memory, swap, heat, power and battery. Works with Ollama, LM Studio, llama.cpp, the MLX servers and your own code.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS (Apple Silicon), Linux (NVIDIA, experimental)","softwareVersion":"0.2.1","license":"https://opensource.org/licenses/MIT","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/inference-vitals/","installUrl":"https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md","codeRepository":"https://github.com/urbanmorph/inference-vitals","screenshot":"https://vitals.urbanmorph.com/img/at-a-glance-dark.webp","author":{"@type":"Organization","name":"urbanmorph","url":"https://github.com/urbanmorph"},"sameAs":["https://github.com/urbanmorph/inference-vitals","https://pypi.org/project/inference-vitals/"]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
 {"@type":"Question","name":"Does it work with Ollama, LM Studio and llama.cpp?","acceptedAnswer":{"@type":"Answer","text":"Yes. Run inference-vitals proxy in front of any engine with an HTTP API (Ollama, LM Studio, llama.cpp, the MLX servers, Jan, LocalAI) and point your app at the proxy. It measures each request on its way through: speed while the answer is written, time to first token, context used, answers cut off or invalid. Your own Python code can report the same numbers with three calls."}},
 {"@type":"Question","name":"Can it follow an MLX fine-tune?","acceptedAnswer":{"@type":"Answer","text":"Yes. Wrap the training command (inference-vitals train -- your command), follow its log file, or report from your own loop. It shows training and validation loss, steps and time left, tokens trained per second, peak memory against the GPU limit, and whether the model is still learning or has started memorising its examples."}},
@@ -176,9 +176,9 @@ footer p{margin:0 0 6px;max-width:60ch}
 
 <main>
 <div class="hero">
-  <h1>See why your local model slowed down</h1>
+  <h1>Training and inference on one timeline</h1>
   <div>
-    <p class="lede">A free dashboard for running and fine-tuning AI models on an <strong>Apple Silicon Mac</strong>, or on Linux with NVIDIA GPUs (experimental). It sits beside whatever you run and puts <strong>the model and the machine on one timeline</strong>: tokens per second and loss beside memory, swap, GPU heat and power.</p>
+    <p class="lede">A free, open dashboard for running and fine-tuning AI models on an <strong>Apple Silicon Mac</strong>, or on Linux with NVIDIA GPUs (experimental). A fine-tune's loss or a model's speed sits <strong>beside the machine</strong>: memory, swap, heat and power, so you can see why a run slowed down. It all lands in <strong>Prometheus</strong>, for Grafana or any tool that reads it.</p>
     <div class="install">
       <div class="bar">
         <div role="tablist" aria-label="Your machine">

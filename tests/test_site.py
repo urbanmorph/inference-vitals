@@ -105,3 +105,28 @@ def test_it_asks_for_a_star_an_issue_and_a_contribution():
     assert (
         "real NVIDIA" in PAGE
     )  # the Linux route has not run on real hardware yet: the ask that matters most
+
+
+PITCH = "Training and inference on one timeline"
+
+
+def test_every_place_that_describes_it_leads_with_the_same_pitch():
+    # the edge (15 Nov 2026): a fine-tune's loss and a model's speed on the machine's timeline, kept in
+    # Prometheus, so the pitch leads everywhere a person or a search engine first meets it
+    def lead(text):
+        return text.lower().startswith(PITCH.lower())
+
+    assert re.search(r"<h1>(.*?)</h1>", PAGE).group(1) == PITCH
+    for prop in ('name="description"', 'property="og:description"'):
+        assert lead(re.search(rf'<meta {prop} content="([^"]+)"', PAGE).group(1)), prop
+    app = next(d for d in _jsonld() if d.get("@type") == "SoftwareApplication")
+    assert lead(app["description"])
+    readme = (ROOT / "README.md").read_text()
+    assert lead(re.search(r"^\*\*(.+?)\*\*", readme, re.MULTILINE).group(1))
+    for llms in (ROOT / "llms.txt", SITE / "llms.txt"):
+        assert lead(re.search(r"^> (.+)$", llms.read_text(), re.MULTILINE).group(1)), llms
+    meta = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    assert lead(meta["description"])
+    assert {"training", "grafana", "prometheus"} <= set(meta["keywords"])
+    for text in (PAGE, readme):
+        assert "Prometheus" in text
