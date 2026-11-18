@@ -3,6 +3,18 @@
 Install or update with `uv tool install inference-vitals` / `uv tool upgrade inference-vitals`, then
 `inference-vitals start`.
 
+## 0.2.2
+
+**A website, and everything points to it.** inference-vitals now has its own page at
+https://vitals.urbanmorph.com.
+- The logo in the dashboard's header opens the website (it opened the GitHub repo). The repo link in
+  the footer stays. (#6)
+- PyPI's Homepage link is the website; the source has its own Repository link.
+
+**One description everywhere.** The package description, the README and both llms.txt files lead with
+the same words as the website: "Training and inference on one timeline", open and Prometheus-native.
+Search keywords gain training, grafana and observability. (#7)
+
 ## 0.2.1
 
 **Updating is now one step.** After `uv tool upgrade inference-vitals`, run `inference-vitals start`: it

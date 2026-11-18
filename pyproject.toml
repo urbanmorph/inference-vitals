@@ -1,6 +1,6 @@
 [project]
 name = "inference-vitals"
-version = "0.2.1"
+version = "0.2.2"
 description = "Training and inference on one timeline: a Prometheus-native dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs"
 authors = [
     { name = "Urban Morph" }
@@ -27,7 +27,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/urbanmorph/inference-vitals"
+Homepage = "https://vitals.urbanmorph.com"
+Repository = "https://github.com/urbanmorph/inference-vitals"
 Documentation = "https://github.com/urbanmorph/inference-vitals/tree/main/docs"
 Issues = "https://github.com/urbanmorph/inference-vitals/issues"
 Changelog = "https://github.com/urbanmorph/inference-vitals/releases"

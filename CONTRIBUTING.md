@@ -54,3 +54,4 @@ tested against. The test keeps the reader honest if the trainer changes its form
 | `src/inference_vitals/proxy.py` | The proxy in front of an engine |
 | `src/inference_vitals/sysstat.py`, `gpustat.py` | The system exporter (memory, swap, battery) and the NVIDIA exporter |
 | `src/inference_vitals/conditions.py` | Run conditions on a Mac |
+| `site/` | The website, vitals.urbanmorph.com (`CNAME`): GitHub Pages publishes it from `.github/workflows/pages.yml` when it changes on `main`; `tests/test_site.py` keeps it true to the package |
