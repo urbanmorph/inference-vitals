@@ -21,7 +21,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="fonts/instrument-sans-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/instrument-sans-600.woff2" as="font" type="font/woff2" crossorigin>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"inference-vitals","url":"https://vitals.urbanmorph.com/","description":"Training and inference on one timeline: an open, Prometheus-native local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs. Model speed and loss beside the machine's memory, swap, heat, power and battery. Works with Ollama, LM Studio, llama.cpp, the MLX servers and your own code.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS (Apple Silicon), Linux (NVIDIA, experimental)","softwareVersion":"0.2.1","license":"https://opensource.org/licenses/MIT","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/inference-vitals/","installUrl":"https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md","codeRepository":"https://github.com/urbanmorph/inference-vitals","screenshot":"https://vitals.urbanmorph.com/img/at-a-glance-dark.webp","author":{"@type":"Organization","name":"urbanmorph","url":"https://github.com/urbanmorph"},"sameAs":["https://github.com/urbanmorph/inference-vitals","https://pypi.org/project/inference-vitals/"]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"inference-vitals","url":"https://vitals.urbanmorph.com/","description":"Training and inference on one timeline: an open, Prometheus-native local dashboard for running and fine-tuning AI models on an Apple Silicon Mac or Linux with NVIDIA GPUs. Model speed and loss beside the machine's memory, swap, heat, power and battery. Works with Ollama, LM Studio, llama.cpp, the MLX servers and your own code.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS (Apple Silicon), Linux (NVIDIA, experimental)","softwareVersion":"0.2.2","license":"https://opensource.org/licenses/MIT","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/inference-vitals/","installUrl":"https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md","codeRepository":"https://github.com/urbanmorph/inference-vitals","screenshot":"https://vitals.urbanmorph.com/img/at-a-glance-dark.webp","author":{"@type":"Organization","name":"urbanmorph","url":"https://github.com/urbanmorph"},"sameAs":["https://github.com/urbanmorph/inference-vitals","https://pypi.org/project/inference-vitals/"]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
 {"@type":"Question","name":"Does it work with Ollama, LM Studio and llama.cpp?","acceptedAnswer":{"@type":"Answer","text":"Yes. Run inference-vitals proxy in front of any engine with an HTTP API (Ollama, LM Studio, llama.cpp, the MLX servers, Jan, LocalAI) and point your app at the proxy. It measures each request on its way through: speed while the answer is written, time to first token, context used, answers cut off or invalid. Your own Python code can report the same numbers with three calls."}},
 {"@type":"Question","name":"Can it follow an MLX fine-tune?","acceptedAnswer":{"@type":"Answer","text":"Yes. Wrap the training command (inference-vitals train -- your command), follow its log file, or report from your own loop. It shows training and validation loss, steps and time left, tokens trained per second, peak memory against the GPU limit, and whether the model is still learning or has started memorising its examples."}},
@@ -202,7 +202,7 @@ xdg-open http://127.0.0.1:3000</code></pre>
         <p class="exp-note">Experimental: tested against recorded <code>nvidia-smi</code> output and in a container, not yet on real NVIDIA hardware. If you try it, <a href="https://github.com/urbanmorph/inference-vitals/issues/new">tell us what you see</a>.</p>
       </div>
     </div>
-    <p class="meta">v0.2.1 · MIT · <a href="https://pypi.org/project/inference-vitals/">PyPI</a> · <a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md">Install guide and troubleshooting</a></p>
+    <p class="meta">v0.2.2 · MIT · <a href="https://pypi.org/project/inference-vitals/">PyPI</a> · <a href="https://github.com/urbanmorph/inference-vitals/blob/main/docs/install.md">Install guide and troubleshooting</a></p>
   </div>
 
   <figure class="trace" aria-labelledby="trace-cap">
@@ -338,7 +338,7 @@ xdg-open http://127.0.0.1:3000</code></pre>
 <footer>
   <div class="cols">
     <div>
-      <p>inference-vitals v0.2.1 · MIT · made by <a href="https://github.com/urbanmorph">urbanmorph</a></p>
+      <p>inference-vitals v0.2.2 · MIT · made by <a href="https://github.com/urbanmorph">urbanmorph</a></p>
       <p>Runs macmon (MIT), Prometheus (Apache-2.0) and optionally Grafana (AGPL-3.0), installed separately; none is bundled.</p>
     </div>
     <ul aria-label="Documentation">

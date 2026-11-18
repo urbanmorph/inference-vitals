@@ -130,3 +130,22 @@ def test_every_place_that_describes_it_leads_with_the_same_pitch():
     assert {"training", "grafana", "prometheus"} <= set(meta["keywords"])
     for text in (PAGE, readme):
         assert "Prometheus" in text
+
+
+def _summary(llms: pathlib.Path) -> str:
+    return "\n".join(re.findall(r"^> (.+)$", llms.read_text(), re.MULTILINE))
+
+
+def test_the_package_and_the_repos_llms_txt_point_to_the_website():
+    urls = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["urls"]
+    assert urls["Homepage"] == URL.rstrip("/")
+    assert urls["Repository"] == "https://github.com/urbanmorph/inference-vitals"
+    llms = (ROOT / "llms.txt").read_text()
+    assert f"]({URL})" in llms
+    assert _summary(ROOT / "llms.txt") == _summary(SITE / "llms.txt")  # one summary, said the same way
+
+
+def test_contributing_says_where_the_website_lives():
+    contributing = (ROOT / "CONTRIBUTING.md").read_text()
+    assert "| `site/` |" in contributing
+    assert "vitals.urbanmorph.com" in contributing and ".github/workflows/pages.yml" in contributing
